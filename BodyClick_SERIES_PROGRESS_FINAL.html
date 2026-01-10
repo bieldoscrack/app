@@ -1,0 +1,2759 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>BodyClick — Biel</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+/* Logo shake animation */
+.logo-shake {
+  animation: shakeB 1.8s ease-in-out infinite;
+}
+@keyframes shakeB {
+  0% { transform: translate(0,0) rotate(0deg); }
+  20% { transform: translate(-1px,1px) rotate(-1deg); }
+  40% { transform: translate(1px,-1px) rotate(1deg); }
+  60% { transform: translate(-1px,1px) rotate(0.5deg); }
+  80% { transform: translate(1px,-1px) rotate(-0.5deg); }
+  100% { transform: translate(0,0) rotate(0deg); }
+}
+
+
+/* ---------- Premium visual upgrades (added) ---------- */
+/* variables */
+:root{
+  --gap-sm:8px; --gap-md:12px; --gap-lg:18px; --pad:16px;
+  --accent: #ff6b4b;
+  --accent-2: #ff4b2b;
+  --muted-2: rgba(255,255,255,0.06);
+}
+/* typography tweaks */
+.app-title{ font-weight:900; letter-spacing:-0.02em; }
+.app-sub{ font-size:13px; color:var(--muted); opacity:0.95; }
+
+/* card polish */
+.card{ padding:var(--pad); border-radius:14px; }
+
+/* buttons depth */
+.btn{
+  border-radius:12px;
+  padding:10px 14px;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.45);
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+.btn:hover{ transform: translateY(-3px); box-shadow: 0 14px 38px rgba(2,6,23,0.55); }
+
+/* monstro glow using pseudo element (non-invasive) */
+#appRoot{ position:relative; overflow:visible; }
+#appRoot::before{
+  content:""; position:absolute; left:50%; top:6px; transform:translateX(-50%);
+  width:80%; height:60%; pointer-events:none; border-radius:20px;
+  background: radial-gradient(closest-side, rgba(2,6,23,0.0), transparent 60%);
+  filter: blur(18px); opacity:0; transition: opacity .36s ease, filter .36s ease;
+  z-index:-1;
+}
+#appRoot.monstro::before{ background: radial-gradient(closest-side, rgba(255,80,40,0.18), transparent 45%); filter: blur(30px); opacity:1; }
+
+/* series cards hover */
+.series-card{ transition: transform .18s ease, box-shadow .18s ease; }
+.series-card:hover{ transform: translateY(-6px); box-shadow:0 18px 40px rgba(2,6,23,0.45); }
+
+/* progress bar */
+.progressBar{ height:8px; background:rgba(255,255,255,0.03); border-radius:999px; overflow:hidden; }
+.progressFill{ height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition: width .36s ease; }
+
+/* input / select focus */
+input:focus, select:focus, textarea:focus{
+  outline:none;
+  box-shadow:0 8px 30px rgba(59,130,246,0.06);
+  border-color: rgba(138,180,255,0.12);
+}
+
+/* small badge style */
+.badge{
+  display:inline-block;
+  padding:6px 8px;
+  border-radius:999px;
+  font-weight:800;
+  font-size:12px;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  color:#071322;
+}
+
+/* entrance animation */
+#appRoot{ transform: translateY(12px); opacity:0; transition: all .42s cubic-bezier(.2,.9,.3,1); }
+#appRoot.visible{ transform:none; opacity:1; }
+
+/* end premium block */
+/* SELECT dark total */
+select {
+    background: #0b1a28 !important;
+    color: var(--white) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+}
+select option {
+    background: #0b1a28 !important;
+    color: var(--white) !important;
+}
+
+  /* Added: force monstro on and disable the button visually */
+.monstroBtn[disabled]{ cursor:default; pointer-events:none; opacity:0.98; filter:grayscale(0.02); }
+:root{
+    --bg:#050814;
+    --card-from:#071426;
+    --card-to:#0b2430;
+    --accent:#ff3b1f;
+    --accent-2:#b20b00;
+    --muted:#8fa7bd;
+    --white:#e9f7ff;
+    --glass: rgba(255,255,255,0.03);
+    --glass-2: rgba(255,255,255,0.02);
+    --radius:14px;
+    --success:#22c55e;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:'Poppins',system-ui,-apple-system,'Segoe UI',Roboto,Arial;color:var(--white);-webkit-font-smoothing:antialiased}
+
+/* ==== BODY: centralização exata ==== */
+  body{
+    margin:0;
+    padding:0;
+    width:100%;
+    height:100vh;
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    background:linear-gradient(180deg,#05101a,#041026);
+
+    overflow-y:auto;
+  }
+
+  .wrap-center{
+    width:100%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:40px 0; /* espaço pro glow vermelho */
+  }
+
+  .container{
+    display:flex;
+    justify-content:center;
+    width:360px;
+    max-width:96vw;
+  }
+
+/* ===== AUTH (login/register/recover) ===== */
+  .auth-wrap{ width:100%; border-radius:16px; overflow:hidden; position:relative; z-index:5;
+    box-shadow: 0 30px 80px rgba(2,6,23,0.6);
+    background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));
+    border:1px solid rgba(255,255,255,0.03);
+    margin-bottom:18px;
+  }
+  .auth-header{ display:flex; gap:14px; align-items:center; padding:18px 20px; }
+  .logo{ width:68px; height:68px; border-radius:14px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); display:flex;align-items:center;justify-content:center;color:#071322;font-weight:900;font-size:34px; box-shadow: 0 10px 36px rgba(179,0,0,0.12);}
+
+  .title h1{ margin:0; font-size:18px; font-weight:800 } .title p{ margin:6px 0 0; font-size:13px; color:var(--muted) }
+  .card{ background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00)); border-radius:12px; padding:18px; }
+  label{ display:block; margin-top:10px; margin-bottom:6px; color:var(--muted); font-size:13px; }
+  input, select, textarea{ width:100%; padding:10px 12px; border-radius:10px; background:var(--glass); border:1px solid rgba(255,255,255,0.04); color:var(--white); outline:none; font-size:14px; }
+  .btn{ display:inline-block; padding:10px 14px; border-radius:12px; border:none; cursor:pointer; font-weight:800; background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#071322; box-shadow:0 12px 30px rgba(179,0,0,0.12); }
+  .btn.ghost{ background:transparent;border:1px solid rgba(255,255,255,0.06); color:var(--muted) }
+  .btn.small{ padding:8px 10px; font-size:14px }
+  .mini-note{ font-size:12px; color:var(--muted); margin-top:8px }
+  .goalBtn{ padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--muted);cursor:pointer; font-weight:700 }
+  .goalBtn.selected{ background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#071322; border:none }
+
+  .auth-viewport{ width:100%; overflow:hidden; position:relative; padding:0; box-sizing:border-box; }
+  .auth-inner{ width:300%; display:flex; transition: transform 520ms cubic-bezier(.2,.9,.28,1); transform: translateX(-33.3333%); will-change: transform; }
+  .panel{ flex: 0 0 33.333333%; max-width:33.333333%; padding:0; box-sizing:border-box; }
+  .panel .card{ margin-bottom:0; }
+  .auth-wrap.show-recover .auth-inner{ transform: translateX(0%); }
+  .auth-wrap.show-login .auth-inner{ transform: translateX(-33.3333%); }
+  .auth-wrap.show-register .auth-inner{ transform: translateX(-66.6667%); }
+
+  .reviews{ margin-top:14px; background: linear-gradient(180deg, rgba(255,255,255,0.012), rgba(0,0,0,0.02)); border-radius:10px; padding:12px; border:1px solid rgba(255,255,255,0.025); box-shadow: 0 6px 18px rgba(2,6,23,0.45); }
+  .reviews h4{ margin:0 0 8px 0; font-size:15px; color:var(--muted); font-weight:700; }
+  .review-item{ display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-top:1px solid rgba(255,255,255,0.01); }
+  .review-item:first-child{ border-top:0 }
+  .review-avatar{ width:36px;height:36px;border-radius:10px;flex:0 0 36px;background:linear-gradient(90deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;color:#071322;font-weight:800;font-size:14px; }
+  .review-body{ flex:1 }
+  .review-name{ font-size:13px; font-weight:800; margin-bottom:3px; color:var(--white) }
+  .review-stars{ font-size:12px; color:var(--accent); margin-bottom:4px }
+  .review-text{ font-size:13px;color:var(--muted);line-height:1.2 }
+
+  /* APP UI (painel de treinos) */
+  #appRoot{
+    width:100%;
+    max-width:380px;
+    border-radius:16px;
+    overflow:hidden;
+    position:relative;
+    z-index:4;
+    box-shadow: 0 30px 80px rgba(2,6,23,0.6);
+    background:linear-gradient(180deg, var(--card-from), var(--card-to));
+    border:1px solid rgba(255,255,255,0.02);
+    color:var(--muted);
+    margin:auto;
+    padding-bottom:14px;
+  }
+#appRoot.monstro { box-shadow: 0 30px 120px rgba(255,80,40,0.28) !important; }
+
+  .app-header{ padding:18px; display:flex; align-items:flex-start; gap:14px; border-bottom:1px solid rgba(255,255,255,0.02); }
+  .app-title{ font-size:18px; font-weight:800; color:var(--white) }
+  .app-sub{ font-size:13px; color:var(--muted); margin-top:6px }
+
+  .monstroBtn{ padding:8px 10px; border-radius:12px; background:linear-gradient(90deg,#ff4b2b,#ff6b4b); color:#071322; font-weight:800; border:none; cursor:pointer; font-size:13px; min-width:100px; box-shadow:0 10px 28px rgba(255,80,40,0.06); }
+
+  .daysTabs{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap }
+  .tab{ padding:8px 12px; border-radius:10px; background:transparent; border:1px solid rgba(255,255,255,0.03); color:var(--muted); cursor:pointer; font-weight:700 }
+  .tab.active{ background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#071322; box-shadow:0 8px 20px rgba(179,0,0,0.08) }
+
+  .controls{ display:flex; gap:12px; align-items:center; margin-top:12px }
+  .progressBox{ flex:1; color:var(--muted) }
+  .progressBar{ height:8px; background:rgba(255,255,255,0.04); border-radius:8px; overflow:hidden; margin-top:6px }
+  .progressFill{ height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width 320ms ease }
+
+  .series-grid{ padding:12px; display:block; gap:12px; }
+  .series-card{ margin-bottom:10px; padding:12px; border-radius:10px; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.02)); border:1px solid rgba(255,255,255,0.02); color:var(--white); display:flex; gap:10px; align-items:center; }
+  .series-card .left{ width:36px; height:36px; border-radius:8px; background:rgba(255,255,255,0.03); display:flex; align-items:center; justify-content:center; font-weight:800; color:var(--accent) }
+  .series-card .meta{ flex:1 }
+  .series-card small{ display:block; color:var(--muted); margin-top:6px; font-weight:600; }
+
+  .check{ width:22px; height:22px; border-radius:6px; border:2px solid rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; cursor:pointer; background:transparent; color:var(--muted); }
+  .check.done{ background:var(--success); color:#071322; border:none }
+  .status{ font-size:12px; color:var(--muted); padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.03) }
+  .link{ color:#8ab4ff; text-decoration:underline; cursor:pointer; font-weight:700; font-size:13px; margin-left:8px }
+
+  .right-controls { display:flex; flex-direction:column; gap:10px; align-items:flex-end; }
+
+  /* New: scrollable area for progress + series */
+  .series-panel{
+    max-height:360px; /* ajuste conforme desejar */
+    overflow:auto;
+    padding-right:8px; /* para não colar no scrollbar */
+    margin-top:12px;
+    border-radius:10px;
+  }
+  /* nicer thin scrollbar */
+  .series-panel::-webkit-scrollbar{ width:8px }
+  .series-panel::-webkit-scrollbar-thumb{ background: rgba(255,255,255,0.04); border-radius:8px }
+  .series-panel::-webkit-scrollbar-thumb:hover{ background: rgba(255,255,255,0.06) }
+
+  /* Calendar styles */
+  .calendar-wrap{ margin-top:14px; border-radius:10px; padding:10px; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.02)); border:1px solid rgba(255,255,255,0.02); }
+  .cal-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .cal-month{ font-weight:800; color:var(--white); font-size:14px }
+  .cal-nav button{ background:transparent;border:1px solid rgba(255,255,255,0.04); color:var(--muted); padding:6px 8px; border-radius:8px; cursor:pointer }
+  .cal-grid{ display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; }
+  .cal-cell{ height:36px; display:flex; align-items:center; justify-content:center; border-radius:8px; color:var(--muted); font-weight:700; cursor:pointer; background:transparent; border:1px solid transparent; position:relative; }
+  .cal-cell.other{ opacity:0.28 }
+  .cal-cell.today{ box-shadow: 0 6px 18px rgba(43, 150, 255, 0.08); border:1px solid rgba(138,180,255,0.12); color:var(--white) }
+  .cal-cell.active{ background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#071322 }
+  .cal-weekday{ font-size:11px; color:var(--muted); text-align:center; margin-bottom:6px; display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:8px; }
+
+  .mark-badge{ position:absolute; font-size:10px; bottom:4px; right:6px; padding:2px 6px; border-radius:8px; background:rgba(0,0,0,0.5); color:var(--muted); }
+
+  @media(max-width:520px){ .container,#appRoot{ width:96vw } }
+
+  .weightBox{ display:flex;gap:8px;align-items:center;margin-top:8px }
+  .weightLabel{ font-weight:800;background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:8px;cursor:pointer }
+  .premiumLabel{ font-size:12px;color:var(--muted);background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:8px }
+
+/* ===== FIX LAYOUT SÉRIES (FINAL) ===== */
+.series-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 14px;
+}
+
+.series-card .left{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  flex:1;
+}
+
+.series-card .left .title{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.2;
+}
+
+.series-card .left .sets{
+  font-size:12px;
+  opacity:.7;
+  margin-top:2px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.ver-video-btn{
+  white-space:nowrap;
+  padding:6px 10px;
+  font-size:12px;
+}
+
+@media(max-width:480px){
+  .series-card{
+    padding:12px;
+  }
+  .series-card .left .title{
+    font-size:13px;
+  }
+}
+
+
+/* ===== CHECKBOX & CARD AJUSTE FINAL ===== */
+.series-card{
+  background:rgba(255,255,255,0.03);
+  border-radius:14px;
+  margin-bottom:10px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.series-check{
+  width:22px;
+  height:22px;
+  border-radius:6px;
+  border:2px solid rgba(255,255,255,0.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.series-check.checked{
+  background:#ff3b1f;
+  border-color:#ff3b1f;
+}
+
+.series-check.checked::after{
+  content:'✓';
+  color:#071322;
+  font-weight:900;
+  font-size:14px;
+}
+
+</style>
+
+<style>
+/* === Calendar modal button fix === */
+#modalActions{
+  flex-wrap:wrap !important;
+  gap:8px !important;
+}
+#modalActions .btn{
+  flex:1 1 28%;
+  min-width:72px;
+  padding:10px 0;
+  text-align:center;
+}
+@media(max-width:420px){
+  #modalActions .btn{
+    flex:1 1 45%;
+  }
+}
+
+/* ===== FIX LAYOUT SÉRIES (FINAL) ===== */
+.series-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 14px;
+}
+
+.series-card .left{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  flex:1;
+}
+
+.series-card .left .title{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.2;
+}
+
+.series-card .left .sets{
+  font-size:12px;
+  opacity:.7;
+  margin-top:2px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.ver-video-btn{
+  white-space:nowrap;
+  padding:6px 10px;
+  font-size:12px;
+}
+
+@media(max-width:480px){
+  .series-card{
+    padding:12px;
+  }
+  .series-card .left .title{
+    font-size:13px;
+  }
+}
+
+
+/* ===== CHECKBOX & CARD AJUSTE FINAL ===== */
+.series-card{
+  background:rgba(255,255,255,0.03);
+  border-radius:14px;
+  margin-bottom:10px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.series-check{
+  width:22px;
+  height:22px;
+  border-radius:6px;
+  border:2px solid rgba(255,255,255,0.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.series-check.checked{
+  background:#ff3b1f;
+  border-color:#ff3b1f;
+}
+
+.series-check.checked::after{
+  content:'✓';
+  color:#071322;
+  font-weight:900;
+  font-size:14px;
+}
+
+</style>
+
+
+<style>
+/* === FIX: header/logo disappearing when calendar opens === */
+.app-header{
+  position:relative;
+  z-index:30;
+}
+.calendar-wrap{
+  position:relative;
+  z-index:10;
+}
+#appRoot{
+  overflow:visible !important;
+}
+
+/* ===== FIX LAYOUT SÉRIES (FINAL) ===== */
+.series-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 14px;
+}
+
+.series-card .left{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  flex:1;
+}
+
+.series-card .left .title{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.2;
+}
+
+.series-card .left .sets{
+  font-size:12px;
+  opacity:.7;
+  margin-top:2px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.ver-video-btn{
+  white-space:nowrap;
+  padding:6px 10px;
+  font-size:12px;
+}
+
+@media(max-width:480px){
+  .series-card{
+    padding:12px;
+  }
+  .series-card .left .title{
+    font-size:13px;
+  }
+}
+
+
+/* ===== CHECKBOX & CARD AJUSTE FINAL ===== */
+.series-card{
+  background:rgba(255,255,255,0.03);
+  border-radius:14px;
+  margin-bottom:10px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.series-check{
+  width:22px;
+  height:22px;
+  border-radius:6px;
+  border:2px solid rgba(255,255,255,0.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.series-check.checked{
+  background:#ff3b1f;
+  border-color:#ff3b1f;
+}
+
+.series-check.checked::after{
+  content:'✓';
+  color:#071322;
+  font-weight:900;
+  font-size:14px;
+}
+
+</style>
+
+
+<style>
+/* === FIX DEFINITIVO: header/logo não some ao abrir calendário === */
+.app-header{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, var(--card-from), var(--card-to));
+  padding-top: 18px;
+}
+/* evita que o calendário empurre o header para fora */
+.calendar-wrap{
+  margin-top: 12px;
+}
+
+/* ===== FIX LAYOUT SÉRIES (FINAL) ===== */
+.series-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 14px;
+}
+
+.series-card .left{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  flex:1;
+}
+
+.series-card .left .title{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.2;
+}
+
+.series-card .left .sets{
+  font-size:12px;
+  opacity:.7;
+  margin-top:2px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.ver-video-btn{
+  white-space:nowrap;
+  padding:6px 10px;
+  font-size:12px;
+}
+
+@media(max-width:480px){
+  .series-card{
+    padding:12px;
+  }
+  .series-card .left .title{
+    font-size:13px;
+  }
+}
+
+
+/* ===== CHECKBOX & CARD AJUSTE FINAL ===== */
+.series-card{
+  background:rgba(255,255,255,0.03);
+  border-radius:14px;
+  margin-bottom:10px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.series-check{
+  width:22px;
+  height:22px;
+  border-radius:6px;
+  border:2px solid rgba(255,255,255,0.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.series-check.checked{
+  background:#ff3b1f;
+  border-color:#ff3b1f;
+}
+
+.series-check.checked::after{
+  content:'✓';
+  color:#071322;
+  font-weight:900;
+  font-size:14px;
+}
+
+</style>
+
+
+<style>
+/* === PREMIUM VIDEO BUTTON === */
+.ver-video-btn{
+  background: linear-gradient(135deg,#ff3b1f,#ff6a00);
+  color:#071322;
+  border:none;
+  border-radius:10px;
+  padding:6px 14px;
+  font-weight:700;
+  font-size:13px;
+  cursor:pointer;
+  box-shadow:0 6px 18px rgba(255,80,30,.35);
+  transition:transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+.ver-video-btn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 10px 28px rgba(255,80,30,.45);
+  filter:brightness(1.05);
+}
+.ver-video-btn:active{
+  transform:scale(.97);
+}
+
+/* ===== FIX LAYOUT SÉRIES (FINAL) ===== */
+.series-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 14px;
+}
+
+.series-card .left{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  flex:1;
+}
+
+.series-card .left .title{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.2;
+}
+
+.series-card .left .sets{
+  font-size:12px;
+  opacity:.7;
+  margin-top:2px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.ver-video-btn{
+  white-space:nowrap;
+  padding:6px 10px;
+  font-size:12px;
+}
+
+@media(max-width:480px){
+  .series-card{
+    padding:12px;
+  }
+  .series-card .left .title{
+    font-size:13px;
+  }
+}
+
+
+/* ===== CHECKBOX & CARD AJUSTE FINAL ===== */
+.series-card{
+  background:rgba(255,255,255,0.03);
+  border-radius:14px;
+  margin-bottom:10px;
+}
+
+.series-card .right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.series-check{
+  width:22px;
+  height:22px;
+  border-radius:6px;
+  border:2px solid rgba(255,255,255,0.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.series-check.checked{
+  background:#ff3b1f;
+  border-color:#ff3b1f;
+}
+
+.series-check.checked::after{
+  content:'✓';
+  color:#071322;
+  font-weight:900;
+  font-size:14px;
+}
+
+</style>
+
+</head>
+<body>
+  <div class="wrap-center">
+    <div class="container">
+
+      <!-- AUTH (login/register/recover) -->
+      <div class="auth-wrap show-login" role="region" aria-label="Autenticação" id="authWrap">
+        <div class="auth-header">
+          <div class="logo logo-shake">B</div>
+          <div class="title">
+            <h1>Entrar — <span style="color:var(--accent)">BodyClick</span></h1>
+            <p>Faça login ou <span id="showRegister" style="color:var(--accent);font-weight:800;cursor:pointer">criar conta</span></p>
+          </div>
+        </div>
+
+        <div class="auth-viewport" id="authViewport">
+          <div class="auth-inner" id="authInner">
+
+            <!-- Recover (left) -->
+            <div class="panel" id="recoverPanel">
+              <div class="card" style="margin-bottom:12px">
+                <h3 style="margin:0 0 8px 0">Recuperar conta</h3>
+                <p style="margin:0 0 10px 0;color:var(--muted)">Coloque o email cadastrado para receber instruções (simulado offline).</p>
+                <label for="recoverEmail">Email</label>
+                <input id="recoverEmail" type="email" placeholder="seu@email.com">
+                <div style="display:flex;gap:8px;margin-top:12px">
+                  <button id="recoverSend" class="btn" style="flex:1">Enviar</button>
+                  <button id="recoverBack" class="btn ghost" style="width:120px">Voltar</button>
+                </div>
+                <div id="recoverNote" class="mini-note" style="margin-top:8px;color:var(--muted)"></div>
+              </div>
+            </div>
+
+            <!-- Login (center) -->
+            <div class="panel" id="loginPanel">
+              <div class="card" style="margin-bottom:12px">
+                <label for="loginEmail">Email</label>
+                <input id="loginEmail" type="email" placeholder="seu email" autocomplete="username">
+                <label for="loginPass" style="margin-top:10px">Senha</label>
+                <input id="loginPass" type="password" placeholder="senha" autocomplete="current-password">
+                <div style="display:flex;gap:8px;margin-top:12px;justify-content:center">
+                  <button id="loginBtn" class="btn" style="width:140px">Entrar</button>
+                </div>
+                <div style="margin-top:8px;font-size:13px">
+                  <span id="forgotLink" class="forgot-link">Esqueci senha</span>
+                </div>
+
+                <!-- Reviews -->
+                <div class="reviews" aria-label="Avaliações de usuários">
+                  <h4>Avaliações</h4>
+                  <div class="review-item">
+                    <div class="review-avatar">L</div>
+                    <div class="review-body">
+                      <div class="review-name">Lucas • RJ</div>
+                      <div class="review-stars">★★★★★</div>
+                      <div class="review-text">Usei por 2 meses e já sinto diferença. treino rápido e eu tô conseguindo manter rotina.</div>
+                    </div>
+                  </div>
+                  <div class="review-item">
+                    <div class="review-avatar">D</div>
+                    <div class="review-body">
+                      <div class="review-name">Duda • SP</div>
+                      <div class="review-stars">★★★★☆</div>
+                      <div class="review-text">Recomendo no geral, aprendi em 2 meses muita coisa com o app</div>
+                    </div>
+                  </div>
+                  <div class="review-item">
+                    <div class="review-avatar">P</div>
+                    <div class="review-body">
+                      <div class="review-name">Pedro • MG</div>
+                      <div class="review-stars">★★★★★</div>
+                      <div class="review-text">Eu tinha vergonha de ir pra academia. Comecei por 20 min/dia aqui em casa e hoje já peso mais leve e tô mais confiante</div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Register (right) -->
+            <div class="panel" id="registerPanel">
+              <div class="card" style="display:block">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <h3 style="margin:0">Criar conta</h3>
+                  <button id="backToLogin" class="btn ghost small">Voltar</button>
+                </div>
+                <label for="regName">Nome completo</label>
+                <input id="regName" placeholder="Seu nome">
+                <label for="regEmail">Email</label>
+                <input id="regEmail" type="email" placeholder="seu@email.com">
+                <div style="display:flex;gap:10px">
+                  <div style="flex:1">
+                    <label for="regPass">Senha</label>
+                    <input id="regPass" type="password" placeholder="min 6 chars">
+                  </div>
+                  <div style="width:110px">
+                    <label for="regAge">Idade</label>
+                    <input id="regAge" type="number" placeholder="idade">
+                  </div>
+                </div>
+                <div style="display:flex;gap:10px;margin-top:8px">
+                  <div style="flex:1">
+                    <label for="regCpf">CPF</label>
+                    <input id="regCpf" placeholder="000.000.000-00" maxlength="14">
+                  </div>
+                  <div style="flex:1">
+                    <label for="regCell">Celular</label>
+                    <input id="regCell" placeholder="+55 11 9 9999-9999" maxlength="18">
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:10px;margin-top:8px">
+                  <div style="flex:1">
+                    <label for="regWeight">Peso (kg)</label>
+                    <input id="regWeight" type="number" placeholder="Ex: 78" min="20" step="0.1">
+                  </div>
+                  <div style="width:150px">
+                    <label for="regMasc">Masculinidade</label>
+                    <select id="regMasc">
+                      <option value="" disabled selected>Selecione</option>
+                      <option value="masculino">Masculino</option>
+                      <option value="feminino">Feminino</option>
+                    </select>
+                  </div>
+                </div>
+
+                <label style="margin-top:10px">Objetivo</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="goalBtn" data-goal="forte">Ganhar Massa</button>
+                  <button class="goalBtn" data-goal="emagrecer">Emagrecer</button>
+                  <button class="goalBtn" data-goal="definir">Definir</button>
+                  <button class="goalBtn" data-goal="calmo">Treino Leve</button>
+                </div>
+
+                <div style="margin-top:12px;display:flex;gap:8px">
+                  <button id="registerBtn" class="btn" style="flex:1">Criar conta e entrar</button>
+                </div>
+                <div class="mini-note">Ao criar, os dados ficam salvos só no seu aparelho (offline).</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- APP container -->
+      <div id="appRoot" class="monstro" style="display:none;"></div>
+
+      <!-- generic modal -->
+      <div id="modalBackdrop" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.7);z-index:60">
+        <div id="modalBox" style="width:360px;background:linear-gradient(180deg,var(--card-from),var(--card-to));padding:16px;border-radius:12px;color:var(--white);box-shadow:0 30px 70px rgba(0,0,0,0.7);transform:translateY(18px);opacity:0;transition:all .28s;">
+          <div style="display:flex;gap:12px;align-items:center">
+            <div id="modalIcon" style="width:56px;height:56px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;background:linear-gradient(90deg,#3b82f6,#60a5fa);color:#071322">i</div>
+            <div style="flex:1">
+              <div id="modalTitle" style="font-weight:800">Título</div>
+              <div id="modalText" style="color:var(--muted);margin-top:6px">Texto</div>
+            </div>
+          </div>
+          <div id="modalActions" style="display:flex;justify-content:flex-end;margin-top:12px">
+            <button id="modalClose" class="btn ghost" style="min-width:88px">Fechar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- particles canvas -->
+      <canvas id="particlesCanvas" style="position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:50"></canvas>
+
+    </div>
+  </div>
+
+<script>
+/* -------------------
+ Storage helpers & utils
+------------------- */
+function simpleHash(s){ let h=0; for(let i=0;i<s.length;i++){ h = (h<<5)-h + s.charCodeAt(i); h |= 0 } return 'h'+Math.abs(h); }
+function loadUsers(){ try{return JSON.parse(localStorage.getItem('bc_users_v1')||'{}')}catch(e){return{}} }
+function saveUsers(u){ localStorage.setItem('bc_users_v1', JSON.stringify(u)) }
+function setSession(email){ localStorage.setItem('bc_session_v1', email) }
+function getSession(){ return localStorage.getItem('bc_session_v1') }
+function clearSession(){ localStorage.removeItem('bc_session_v1') }
+function loadProgress(email){ try{ return JSON.parse(localStorage.getItem('bc_progress_' + email) || '{}'); }catch(e){return{}} }
+function saveProgress(email, data){ localStorage.setItem('bc_progress_' + email, JSON.stringify(data)); }
+
+/* premium helpers */
+function getPremiumKey(email){ return 'bc_premium_' + (email || getSession() || 'guest'); }
+function loadPremium(email){ try{ return JSON.parse(localStorage.getItem(getPremiumKey(email))||'{}'); }catch(e){return{} } }
+function savePremium(email, data){ localStorage.setItem(getPremiumKey(email), JSON.stringify(data)); }
+function getPremiumDaysLeft(email){
+  const p = loadPremium(email);
+  if(!p || !p.expiresAt) return 0;
+  const now = new Date();
+  const expires = new Date(p.expiresAt);
+  const diff = Math.ceil((expires - now) / (1000*60*60*24));
+  return diff > 0 ? diff : 0;
+}
+
+/* modal helpers */
+function showModal({title='Aviso',text='',icon='i',color='#3b82f6',buttons=null,autoClose=0}){
+  const mb = document.getElementById('modalBackdrop');
+  const box = document.getElementById('modalBox');
+  if(!mb || !box) return;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalText').textContent = text;
+  const mi = document.getElementById('modalIcon');
+  mi.textContent = icon;
+  mi.style.background = `linear-gradient(90deg, ${color}, ${shadeColor(color,-20)})`;
+  const actions = document.getElementById('modalActions');
+  actions.innerHTML = '';
+  if(buttons && buttons.length){
+    buttons.forEach(b=>{
+      const btn = document.createElement('button');
+      btn.className = b.className? b.className : 'btn ghost';
+      btn.textContent = b.label;
+      btn.onclick = ()=>{ if(b.handler) b.handler(); };
+      btn.style.minWidth='88px';
+      actions.appendChild(btn);
+    });
+  } else {
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost';
+    btn.textContent = 'Fechar';
+    btn.onclick = closeModal;
+    btn.style.minWidth='88px';
+    actions.appendChild(btn);
+  }
+  mb.style.display = 'flex';
+  setTimeout(()=> box.style.transform='translateY(0)', 10);
+  setTimeout(()=> box.style.opacity='1', 10);
+  if(autoClose>0) setTimeout(closeModal, autoClose);
+}
+function closeModal(){ const mb = document.getElementById('modalBackdrop'); const box = document.getElementById('modalBox'); if(!mb || !box) return; box.style.transform='translateY(18px)'; box.style.opacity='0'; setTimeout(()=> mb.style.display='none',260); }
+function shadeColor(col, amt){ try{ if(!col) return '#000'; if(col[0]==='#') col=col.slice(1); let num=parseInt(col,16); let r=(num>>16)+amt; if(r>255) r=255; if(r<0) r=0; let g=((num>>8)&0x00FF)+amt; if(g>255) g=255; if(g<0) g=0; let b=(num&0x0000FF)+amt; if(b>255) b=255; if(b<0) b=0; return '#'+((r<<16)|(g<<8)|b).toString(16).padStart(6,'0'); }catch(e){return '#000000'} }
+
+/* small escape */
+function escapeHtml(str){ if(!str) return ''; return String(str).replace(/[&<>"'`=\/]/g, function(s) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60','=':'&#x3D'}[s]; }); }
+
+/* ====== UI toggles and defensive listeners ====== */
+const authWrap = document.getElementById('authWrap');
+const showRegisterText = document.getElementById('showRegister');
+const backToLogin = document.getElementById('backToLogin');
+const forgotLink = document.getElementById('forgotLink');
+const recoverBack = document.getElementById('recoverBack');
+const recoverSend = document.getElementById('recoverSend');
+
+function showLoginState(){ authWrap.classList.remove('show-register','show-recover'); authWrap.classList.add('show-login'); setTimeout(()=> { const el = document.getElementById('loginEmail'); if(el) el.focus(); }, 260); }
+function showRegister(){ authWrap.classList.remove('show-recover'); authWrap.classList.add('show-register'); setTimeout(()=> { const el = document.getElementById('regName'); if(el) el.focus(); }, 260); }
+function showRecover(){ authWrap.classList.remove('show-register','show-login'); authWrap.classList.add('show-recover'); setTimeout(()=> { const el = document.getElementById('recoverEmail'); if(el) el.focus(); }, 260); }
+
+if(showRegisterText) showRegisterText.addEventListener('click', showRegister);
+if(backToLogin) backToLogin.addEventListener('click', showLoginState);
+if(forgotLink) forgotLink.addEventListener('click', showRecover);
+if(recoverBack) recoverBack.addEventListener('click', showLoginState);
+
+/* recover handler (simulado) */
+if(recoverSend) recoverSend.addEventListener('click', function(e){
+  e.preventDefault();
+  const email = (document.getElementById('recoverEmail').value||'').trim().toLowerCase();
+  if(!emailRegex.test(email)){ showModal({title:'Email inválido', text:'Informe um email válido para recuperação (ex: nome@exemplo.com).', icon:'!', color:'#ef4444'}); return; }
+  const users = loadUsers();
+  const u = users[email];
+  if(!u){ const note = document.getElementById('recoverNote'); if(note) note.textContent = 'Email não encontrado nos cadastros.'; return; }
+  showModal({title:'Recuperação enviada', text:`Solicitação simulada enviada para ${email}.`, icon:'✉️', color:'#60a5fa'});
+  setTimeout(()=> { const el = document.getElementById('loginEmail'); if(el) { el.value = email; } showLoginState(); }, 600);
+});
+
+/* goal buttons (register) */
+document.querySelectorAll('.goalBtn').forEach(b=>{
+  b.addEventListener('click', ()=> {
+    document.querySelectorAll('.goalBtn').forEach(x=> x.classList.remove('selected'));
+    b.classList.add('selected');
+  });
+});
+
+/* particles (light) */
+const canvas = document.getElementById('particlesCanvas');
+const ctx = canvas.getContext ? canvas.getContext('2d') : null;
+if(ctx){
+  let particles = [];
+  function resizeCanvas(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+  window.addEventListener('resize', resizeCanvas); resizeCanvas();
+  function emit(x,y){ for(let i=0;i<6;i++){ particles.push({x,y,vx:(Math.random()-0.5)*2,vy:(Math.random()-1.5)*2,life:2000,born:Date.now()}); } }
+  function loop(){ if(!ctx) return; ctx.clearRect(0,0,canvas.width,canvas.height); const now = Date.now(); particles = particles.filter(p=> now - p.born < p.life); particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; ctx.globalAlpha = 1 - (now-p.born)/p.life; ctx.fillStyle = '#ff6b4b'; ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fill(); }); requestAnimationFrame(loop); }
+  requestAnimationFrame(loop);
+}
+
+/* ==========================
+  Plans templates
+========================= */
+function getPlanTemplate(gender, goal){
+  const genericDayTitles = { segunda: 'Peito + Tríceps', terca: 'Costas + Bíceps', quinta: 'Pernas + Glúteo', sexta: 'Ombro + Trapézio + Abdômen' };
+
+  const templates = {
+    masculino: {
+      forte: {
+        title: 'Treino Masculino — Hipertrofia',
+        objective: '+massa',
+        dayTitles: genericDayTitles,
+        days: {
+          'segunda': [
+            { id:'m_f_seg_1', name:'Supino reto', sets:'4x 8-12', video:'supino-reto.mp4' },
+            { id:'m_f_seg_2', name:'Supino inclinado halter', sets:'3x 8-12', video:'supino-inclinado-halter.mp4' },
+            { id:'m_f_seg_3', name:'Crucifixo com halter', sets:'3x 12', video:'crucifixo-com-halter.mp4' },
+            { id:'m_f_seg_4', name:'Crucifixo Máquina', sets:'3x 12-15', video:'crucifixo-maquina.mp4' },
+            { id:'m_f_seg_5', name:'Tríceps corda', sets:'3x 10-12', video:'triceps-corda.mp4' },
+            { id:'m_f_seg_6', name:'Tríceps testa', sets:'3x 10-12', video:'triceps-testa.mp4' }
+          ],
+          'terca': [
+            { id:'m_f_ter_1', name:'Puxada frente / Barra fixa', sets:'4x 8-12', video:'puxada-frente.mp4' },
+            { id:'m_f_ter_2', name:'Remada baixa', sets:'3x 10-12', video:'remada-baixa.mp4' },
+            { id:'m_f_ter_3', name:'Remada unilateral', sets:'3x 10-12', video:'remada-unilateral.mp4' },
+            { id:'m_f_ter_4', name:'Puxada neutra', sets:'3x 12', video:'puxada-neutra.mp4' },
+            { id:'m_f_ter_5', name:'Rosca direta', sets:'3x 8-12', video:'rosca-direta.mp4' },
+            { id:'m_f_ter_6', name:'Rosca alternada', sets:'3x 10-12', video:'rosca-alternada.mp4' }
+          ],
+          'quinta': [
+            { id:'m_f_qui_1', name:'Agachamento Smith', sets:'4x 8-12', video:'agachamento-smith.mp4' },
+            { id:'m_f_qui_2', name:'Leg press 45°', sets:'4x 10-12', video:'legpress.mp4' },
+            { id:'m_f_qui_3', name:'Cadeira extensora (drop set)', sets:'3x 12-15', video:'cadeira-extensora.mp4' },
+            { id:'m_f_qui_4', name:'Mesa flexora', sets:'3x 12', video:'mesa-flexora.mp4' },
+            { id:'m_f_qui_5', name:'Stiff halter', sets:'3x 10-12', video:'stiff-halter.mp4' },
+            { id:'m_f_qui_6', name:'Panturrilha em pé', sets:'4x 15-20', video:'panturrilha-pe.mp4' }
+          ],
+          'sexta': [
+            { id:'m_f_sex_1', name:'Elevação lateral', sets:'4x 12', video:'elevação-lateral.mp4' },
+            { id:'m_f_sex_2', name:'Desenvolvimento militar', sets:'3x 8-12', video:'desenvolvimento-militar.mp4' },
+            { id:'m_f_sex_3', name:'Elevação frontal', sets:'3x 12', video:'elevação-frontal.mp4' },
+            { id:'m_f_sex_4', name:'Remada alta', sets:'3x 10', video:'remada-alta.mp4' },
+            { id:'m_f_sex_5', name:'Encolhimento trapézio', sets:'3x 12', video:'encolhimento-trapezio.mp4' },
+            { id:'m_f_sex_6', name:'Prancha isometria', sets:'3x 30s', video:'prancha.mp4' },
+            { id:'m_f_sex_7', name:'Abdominal infra', sets:'3x 15', video:'abdominal-infra.mp4' }
+          ]
+        }
+      },
+      emagrecer: {
+        title: 'Treino Masculino — Emagrecimento & Condicionamento',
+        objective: 'emagrecer',
+        dayTitles: { segunda: 'Cardio + Core', terca: 'Força Explosiva', quinta: 'Circuito de Pernas', sexta: 'MetCon & Core' },
+        days:{
+          'segunda':[
+            {id:'m_e_seg_1', name:'Corrida intervalada', sets:'8 x 30s sprint / 90s trote', video:'#'},
+            {id:'m_e_seg_2', name:'Burpees', sets:'4x 12', video:'#'},
+            {id:'m_e_seg_3', name:'Mountain climbers', sets:'4x 40s', video:'#'},
+            {id:'m_e_seg_4', name:'Prancha', sets:'3x 60s', video:'#'}
+          ],
+          'terca':[
+            {id:'m_e_ter_1', name:'Kettlebell swing', sets:'4x 15', video:'#'},
+            {id:'m_e_ter_2', name:'Flexões explosivas', sets:'4x 8-12', video:'#'},
+            {id:'m_e_ter_3', name:'Remada invertida', sets:'4x 10-12', video:'#'},
+            {id:'m_e_ter_4', name:'Agachamento com salto', sets:'3x 10', video:'#'}
+          ],
+          'quinta':[
+            {id:'m_e_qui_1', name:'Bike Tabata', sets:'8 rounds 20/10', video:'#'},
+            {id:'m_e_qui_2', name:'Leg press rápido', sets:'4x 10-12', video:'#'},
+            {id:'m_e_qui_3', name:'Passada', sets:'3x 12 cada perna', video:'#'},
+            {id:'m_e_qui_4', name:'Panturrilha', sets:'4x 15', video:'#'}
+          ],
+          'sexta':[
+            {id:'m_e_sex_1', name:'AMRAP 12 min (MetCon)', sets:'AMRAP 12min', video:'#'},
+            {id:'m_e_sex_2', name:'Swing / Burpee combo', sets:'ver descrição', video:'#'},
+            {id:'m_e_sex_3', name:'Prancha lateral', sets:'3x 30s cada lado', video:'#'}
+          ]
+        }
+      },
+      definir: {
+        title: 'Treino Masculino — Definição & Resistência',
+        objective: 'definir',
+        dayTitles: { segunda: 'Fullbody + Core', terca: 'Upper Hypertrophy', quinta: 'Lower & Explosão', sexta: 'Core + Mobilidade' },
+        days: {
+          'segunda':[
+            {id:'m_d_seg_1', name:'Supino reto (moderado)', sets:'3x 10', video:'#'},
+            {id:'m_d_seg_2', name:'Agachamento frontal', sets:'3x 10', video:'#'},
+            {id:'m_d_seg_3', name:'Barra fixa (assistida)', sets:'3x 6-8', video:'#'},
+            {id:'m_d_seg_4', name:'Prancha com elevação de perna', sets:'3x 40s', video:'#'}
+          ],
+          'terca':[
+            {id:'m_d_ter_1', name:'Remada curvada', sets:'3x 10', video:'#'},
+            {id:'m_d_ter_2', name:'Desenvolvimento militar', sets:'3x 10', video:'#'},
+            {id:'m_d_ter_3', name:'Rosca direta (drop)', sets:'3x 12', video:'#'},
+            {id:'m_d_ter_4', name:'Crunch com peso', sets:'3x 20', video:'#'}
+          ],
+          'quinta':[
+            {id:'m_d_qui_1', name:'Stiff romeno', sets:'3x 10', video:'#'},
+            {id:'m_d_qui_2', name:'Leg press (controle)', sets:'3x 12', video:'#'},
+            {id:'m_d_qui_3', name:'Agachamento com salto (explosão)', sets:'3x 8', video:'#'},
+            {id:'m_d_qui_4', name:'Panturrilha sentado', sets:'3x 15', video:'#'}
+          ],
+          'sexta':[
+            {id:'m_d_sex_1', name:'Circuito Core (prancha, elevação de pernas, russian twist)', sets:'3 rondas', video:'#'},
+            {id:'m_d_sex_2', name:'Mobilidade de quadril e ombro', sets:'10 min', video:'#'}
+          ]
+        }
+      },
+      calmo: {
+        title: 'Treino Masculino — Recuperação & Mobilidade',
+        objective: 'leve',
+        dayTitles: { segunda: 'Alongamento & Mobilidade', terca: 'Cardio Leve', quinta: 'Força Leve', sexta: 'Pilates / Core' },
+        days:{
+          'segunda':[{id:'m_c_seg_1', name:'Polichinelo', sets:'3x15', video:'#'},
+            {id:'m_c_seg_2', name:'Mobilidade de quadril', sets:'10 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}],
+          'terca':[{id:'m_c_ter_1', name:'Caminhada ou Bike leve', sets:'25-30 min', video:'#'},
+            {id:'m_c_ter_2', name:'Respiração diafragmática', sets:'5 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}],
+          'quinta':[{id:'m_c_qui_1', name:'Circuito força leve (bandas)', sets:'3x 12', video:'#'},
+            {id:'m_c_qui_2', name:'Mobilidade de coluna', sets:'10 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}],
+          'sexta':[{id:'m_c_sex_1', name:'Pilates / Core leve', sets:'20 min', video:'#'},
+            {id:'m_c_sex_2', name:'Alongamento final', sets:'8 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}]
+        }
+      },
+    },
+    feminino: {
+      forte: { 
+        title:'Treino Feminino — Hipertrofia Glúteo/Pernas', 
+        objective:'+massa',
+        dayTitles: { segunda: 'Pernas + Glúteo', terca: 'Costas + Bíceps', quinta: 'Glúteos Intensivo', sexta: 'Ombro + Core' },
+        days:{
+        'segunda':[
+          {id:'fg_seg_1', name:'Hip thrust', sets:'4x 8-12', video:'hip-thrust.mp4'},
+          {id:'fg_seg_2', name:'Agachamento livre', sets:'4x 8-12', video:'#'},
+          {id:'fg_seg_3', name:'Leg press (pés altos)', sets:'4x 10-12', video:'#'},
+          {id:'fg_seg_4', name:'Cadeira extensora', sets:'3x 12', video:'#'},
+          {id:'fg_seg_5', name:'Panturrilha em pé', sets:'3x 15', video:'#'}
+        ],
+        'terca':[
+          {id:'fg_ter_1', name:'Stiff romeno', sets:'4x 8-12', video:'#'},
+          {id:'fg_ter_2', name:'Mesa flexora', sets:'3x 10-12', video:'#'},
+          {id:'fg_ter_3', name:'Glúteo no cabo', sets:'3x 12', video:'#'},
+          {id:'fg_ter_4', name:'Abdutora', sets:'3x 15', video:'#'},
+          {id:'fg_ter_5', name:'Elevação pélvica unilateral', sets:'3x 10', video:'#'}
+        ],
+        'quinta':[
+          {id:'fg_qui_1', name:'Hack machine', sets:'4x 8-12', video:'#'},
+          {id:'fg_qui_2', name:'Avanço caminhando', sets:'3x 10 cada perna', video:'#'},
+          {id:'fg_qui_3', name:'Agachamento sumô', sets:'4x 10', video:'#'},
+          {id:'fg_qui_4', name:'Cadeira adutora', sets:'3x 12', video:'#'},
+          {id:'fg_qui_5', name:'Panturrilha sentada', sets:'3x 15', video:'#'}
+        ],
+        'sexta':[
+          {id:'fg_sex_1', name:'Ponte de glúteo', sets:'4x 12', video:'#'},
+          {id:'fg_sex_2', name:'Passada no lugar', sets:'3x 10 cada perna', video:'#'},
+          {id:'fg_sex_3', name:'Glúteo no banco', sets:'3x 12', video:'#'},
+          {id:'fg_sex_4', name:'Abdução com elástico', sets:'3x 20', video:'#'},
+          {id:'fg_sex_5', name:'Prancha', sets:'3x 30s', video:'#'}
+        ]
+}
+      },
+      emagrecer: {
+        title: 'Treino Feminino — Emagrecimento & Queima',
+        objective: 'emagrecer',
+        dayTitles: { segunda: 'Cardio & Core', terca: 'Força + MetCon', quinta: 'Pernas e Glúteo (Queima)', sexta: 'Core & Mobilidade' },
+        days:{
+          'segunda':[
+            {id:'f_e_seg_1', name:'Corrida leve + tiros', sets:'5x 1min tiros / 2min', video:'#'},
+            {id:'f_e_seg_2', name:'Polichinelos', sets:'4x 50', video:'#'},
+            {id:'f_e_seg_3', name:'Prancha', sets:'4x 40s', video:'#'}
+          ],
+          'terca':[
+            {id:'f_e_ter_1', name:'Circuito com pesos', sets:'3 rondas', video:'#'},
+            {id:'f_e_ter_2', name:'Agachamento com halter', sets:'4x 12', video:'#'},
+            {id:'f_e_ter_3', name:'Burpees', sets:'3x 12', video:'#'}
+          ],
+          'quinta':[
+            {id:'f_e_qui_1', name:'Step ups', sets:'4x 12 cada perna', video:'#'},
+            {id:'f_e_qui_2', name:'Leg press rápido', sets:'4x 12', video:'#'},
+            {id:'f_e_qui_3', name:'Hip thrust', sets:'4x 10', video:'#'}
+          ],
+          'sexta':[
+            {id:'f_e_sex_1', name:'Circuito Core', sets:'3 rondas', video:'#'},
+            {id:'f_e_sex_2', name:'Prancha lateral', sets:'3x 30s cada lado', video:'#'}
+          ]
+        }
+      },
+      definir: {
+        title: 'Treino Feminino — Definição & Resistência',
+        objective: 'definir',
+        dayTitles: { segunda: 'Fullbody Tonificação', terca: 'Upper & Core', quinta: 'Lower Tone', sexta: 'Mobility & Core' },
+        days:{
+          'segunda':[
+            {id:'f_d_seg_1', name:'Supino inclinado (moderado)', sets:'3x 10', video:'#'},
+            {id:'f_d_seg_2', name:'Agachamento sumô', sets:'3x 10', video:'#'},
+            {id:'f_d_seg_3', name:'Remada unilateral', sets:'3x 10', video:'#'},
+            {id:'f_d_seg_4', name:'Prancha com rotação', sets:'3x 40s', video:'#'}
+          ],
+          'terca':[
+            {id:'f_d_ter_1', name:'Puxada frente', sets:'3x 10', video:'#'},
+            {id:'f_d_ter_2', name:'Desenvolvimento com halter', sets:'3x 10', video:'#'},
+            {id:'f_d_ter_3', name:'Abdominal com carga', sets:'3x 20', video:'#'}
+          ],
+          'quinta':[
+            {id:'f_d_qui_1', name:'Stiff romeno', sets:'3x 10', video:'#'},
+            {id:'f_d_qui_2', name:'Leg press (controle)', sets:'3x 12', video:'#'},
+            {id:'f_d_qui_3', name:'Passadas', sets:'3x 12 cada perna', video:'#'}
+          ],
+          'sexta':[
+            {id:'f_d_sex_1', name:'Core & mobilidade (pilates leve)', sets:'20 min', video:'#'},
+            {id:'f_d_sex_2', name:'Alongamento', sets:'8 min', video:'#'}
+          ]
+        }
+      },
+      calmo: {
+        title: 'Treino Feminino — Leve & Recuperação',
+        objective: 'leve',
+        dayTitles: { segunda: 'Alongamento & Mobilidade', terca: 'Cardio leve', quinta: 'Força leve', sexta: 'Pilates / Core' },
+        days:{
+          'segunda':[{id:'f_c_seg_1', name:'Alongemnto Dinamico', sets:'15 min', video:'#'},
+            {id:'f_c_seg_2', name:'Mobilidade de quadril', sets:'10 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}],
+          'terca':[{id:'f_c_ter_1', name:'Caminhada ou Bike leve', sets:'25 min', video:'#'},
+            {id:'f_c_ter_2', name:'Respiração', sets:'5 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}],
+          'quinta':[{id:'f_c_qui_1', name:'Circuito leve com elástico', sets:'3x 12', video:'#'},
+            {id:'f_c_qui_2', name:'Mobilidade de coluna', sets:'10 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}],
+          'sexta':[{id:'f_c_sex_1', name:'Pilates / Core leve', sets:'20 min', video:'#'},
+            {id:'f_c_sex_2', name:'Alongamento final', sets:'8 min', video:'#'},
+{"id": "extra_a", "name": "Agachamento livre", "sets": "3x12", "video": "#"},
+{"id": "extra_b", "name": "Flex\u00e3o de bra\u00e7o", "sets": "3x10", "video": "#"},
+{"id": "extra_c", "name": "Abdominal supra", "sets": "3x20", "video": "#"},
+{"id": "mix1", "name": "Eleva\u00e7\u00e3o lateral com garrafa", "sets": "3x15", "video": "#"},
+{"id": "mix2", "name": "Tr\u00edceps no banco", "sets": "3x12", "video": "#"},
+{"id": "mix3", "name": "Polichinelo", "sets": "30s", "video": "#"}]
+        }
+      }
+    }
+  };
+
+  
+  // === PADRÃO FIXO 6 / 7 EXERCÍCIOS POR DIA (AUTO) ===
+  const regra = { segunda:6, terca:7, quinta:6, sexta:7 };
+
+  const genericos = [
+    { id:'x1', name:'Exercício A', sets:'3x12', video:'#' },
+    { id:'x2', name:'Exercício B', sets:'3x12', video:'#' },
+    { id:'x3', name:'Exercício C', sets:'3x12', video:'#' },
+    { id:'x4', name:'Exercício D', sets:'3x12', video:'#' },
+    { id:'x5', name:'Exercício E', sets:'3x12', video:'#' },
+    { id:'x6', name:'Exercício F', sets:'3x12', video:'#' },
+    { id:'x7', name:'Exercício G', sets:'3x12', video:'#' }
+  ];
+
+  const plano = templates[gender][goal];
+
+  Object.keys(regra).forEach(dia=>{
+    if(!plano.days[dia]) return;
+
+    plano.days[dia] = plano.days[dia].slice(0, regra[dia]);
+
+    let i = 0;
+    while(plano.days[dia].length < regra[dia]){
+      plano.days[dia].push({
+        ...genericos[i],
+        id: genericos[i].id + '_' + dia + '_' + plano.days[dia].length
+      });
+      i++;
+    }
+  });
+
+  return plano;
+
+  return {
+    title:'Treino — Iniciante',
+    objective:'padrão',
+    dayTitles: { segunda: 'Full A', terca:'Full B', quinta:'Full C', sexta:'Full D' },
+    days:{ 'segunda':[ {id:'g_seg_1', name:'Treino full 1', sets:'3x 10', video:'#'} ], 'terca':[ {id:'g_ter_1', name:'Treino full 2', sets:'3x 10', video:'#'} ], 'quinta':[ {id:'g_qui_1', name:'Treino full 3', sets:'3x 10', video:'#'} ], 'sexta':[ {id:'g_sex_1', name:'Treino full 4', sets:'3x 10', video:'#'} ] }
+  };
+}
+
+/* -----------------
+ Render app (after login/register)
+----------------- */
+function renderApp(user){
+  const appRoot = document.getElementById('appRoot');
+  if(!appRoot) { console.error('renderApp abortado: #appRoot missing'); return; }
+
+  window.currentUserGender = user.masculinidade || 'masculino';
+  appRoot._user = user;
+  appRoot._userEmail = user.email;
+
+  const plan = getPlanTemplate(window.currentUserGender, user.goal || 'forte');
+  appRoot._currentPlan = plan;
+
+  const aw = document.getElementById('authWrap');
+  if(aw) aw.style.display = 'none';
+  appRoot.style.display = 'block';
+
+  const displayName = user.name || user.email || 'Usuário';
+  const userWeight = (user.peso !== undefined && user.peso !== null) ? user.peso : 'Indefinido';
+  const premiumDays = getPremiumDaysLeft(user.email);
+
+  appRoot.innerHTML = `
+    <div class="app-header">
+      <div style="display:flex;align-items:center;gap:12px;flex:1">
+        <div style="width:68px;height:68px;border-radius:14px;background:linear-gradient(90deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;color:#071322;font-weight:900;font-size:34px">B</div>
+        <div>
+          <div class="app-title">BodyClick — <span style="color:var(--accent)">${escapeHtml(displayName)}</span></div>
+          <div class="app-sub">Treine hoje. O futuro agradece.</div>
+        </div>
+      </div>
+
+      <div class="right-controls">
+        <button id="monstroBtn" class="monstroBtn" data-on="1" disabled aria-disabled="true">MONSTRO ON</button>
+        <button id="logoutBtn" class="btn ghost small">Sair</button>
+        <div id="pesoRightBox" style="font-size:12px;color:var(--muted);padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer">
+          Peso: <strong id="pesoLabelSimple">${userWeight}</strong> kg
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <div>
+              <div style="font-size:12px;color:var(--muted)">Treino atual</div>
+              <h3 id="trainTitle" style="margin:6px 0 0 0;color:var(--white)">${escapeHtml(plan.title)}</h3>
+              <div style="margin-top:6px;color:var(--muted)">Objetivo: <strong id="objectiveLabel" style="color:var(--white)">${escapeHtml(plan.objective)}</strong></div>
+            </div>
+            <div style="text-align:right;min-width:120px">
+              <div style="height:30px"></div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px">
+            <button id="toggleCalendar" class="btn ghost small" style="padding:8px 10px">Abrir calendário</button>
+            
+            
+          </div>
+
+          <!-- CALENDAR (toggleable) -->
+          <div class="calendar-wrap" id="calendarWrap" role="region" aria-label="Calendário" style="display:none;margin-top:10px">
+            <div class="cal-header">
+              <div class="cal-month" id="calMonthLabel">Mês Ano</div>
+              <div class="cal-nav">
+                <button id="calPrev" aria-label="Mês anterior">◀</button>
+                <button id="calNext" aria-label="Próximo mês">▶</button>
+              </div>
+            </div>
+            <div class="cal-weekday">
+              <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+            </div>
+            <div class="cal-grid" id="calGrid"></div>
+          </div>
+
+          <div class="daysTabs" id="daysTabs" style="margin-top:12px"></div>
+
+          <!-- START: scrollable panel that contains Progresso + Séries -->
+          <div class="series-panel" id="seriesPanelRoot">
+            <div class="controls" style="margin-top:0">
+              <div class="progressBox">
+                <div style="font-weight:800;color:var(--white)">Progresso hoje<br><strong id="progressText"></strong> <span id="progressCounter"></span></div>
+                <div class="progressBar"><div id="progressFill" class="progressFill"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end">
+                <button id="resetBtn" class="btn ghost" style="min-width:120px">Resetar Semana</button>
+              </div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div id="exList" class="series-grid"></div>
+          </div>
+          <!-- END: scrollable panel -->
+
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  // RIGHT-side weight edit handler
+  const pesoRight = document.getElementById('pesoRightBox');
+  if(pesoRight){
+    pesoRight.addEventListener('click', ()=>{
+      const current = (appRoot._user && appRoot._user.peso) ? String(appRoot._user.peso) : '';
+      const res = prompt('Atualizar peso (kg):', current);
+      if(res === null) return;
+      const val = res.toString().replace(',', '.').trim();
+      if(val === '') { showModal({title:'Inválido', text:'Peso não alterado.', autoClose:1200}); return; }
+      const num = parseFloat(val);
+      if(isNaN(num) || num <= 0){ showModal({title:'Peso inválido', text:'Informe um número válido em kg.', autoClose:1400}); return; }
+      const users = loadUsers();
+      const email = appRoot._userEmail;
+      if(users[email]){ users[email].peso = num; saveUsers(users); appRoot._user.peso = num; }
+      const simple = document.getElementById('pesoLabelSimple'); if(simple) simple.textContent = num;
+      showModal({title:'Peso atualizado', text:`Novo peso: ${num} kg`, autoClose:1100});
+    });
+  }
+
+  // setup calendar + tabs + handlers (same as previous)
+  if(document.getElementById('calendarWrap')){
+    initCalendar(document.getElementById('calendarWrap'));
+    setupCalendarButtons();
+    renderCalendarMarks(user.email);
+  }
+
+  const days = ['segunda','terca','quinta','sexta'];
+  const tabs = document.getElementById('daysTabs');
+  const daysLabels = { segunda:'Segunda', 'terca':'Terça', 'quinta':'Quinta', 'sexta':'Sexta' };
+  if(tabs){
+    tabs.innerHTML = '';
+    days.forEach((d,i)=>{
+      const btn = document.createElement('button');
+      btn.className = 'tab' + (i===0 ? ' active' : '');
+      btn.textContent = daysLabels[d];
+      btn.dataset.day = d;
+      tabs.appendChild(btn);
+    });
+    tabs.querySelectorAll('.tab').forEach(t=>{
+      t.addEventListener('click', ()=>{
+        tabs.querySelectorAll('.tab').forEach(x=> x.classList.remove('active'));
+        t.classList.add('active');
+        renderExercisesForDay(t.dataset.day, appRoot._currentPlan, user.email);
+        // when switching day, scroll the series panel to top for clarity
+        const sp = document.getElementById('seriesPanelRoot');
+        if(sp) sp.scrollTop = 0;
+      });
+    });
+  }
+  renderExercisesForDay('segunda', appRoot._currentPlan, user.email);
+
+  const resetBtn = document.getElementById('resetBtn');
+  if(resetBtn) resetBtn.addEventListener('click', ()=> { if(confirm('Resetar toda a semana para este usuário?')) resetWeek(user.email, appRoot._currentPlan); });
+
+  const monstroBtn = document.getElementById('monstroBtn');
+  if(monstroBtn){
+    monstroBtn.addEventListener('click', ()=>{
+      const b = monstroBtn;
+      if(b.dataset.on === '1'){
+        b.dataset.on = '0';
+        b.textContent = 'MONSTRO MODE';
+        document.getElementById('appRoot').style.boxShadow = '0 30px 80px rgba(2,6,23,0.6)';
+      } else {
+        b.dataset.on = '1';
+        b.textContent = 'MONSTRO ON';
+        /* Glow maior e vermelho — mas como a página tem padding, não encosta nas bordas */
+        document.getElementById('appRoot').style.boxShadow = '0 30px 120px rgba(255,80,40,0.28)';
+      }
+    });
+  }
+
+  const logoutBtn = document.getElementById('logoutBtn');
+  if(logoutBtn){
+    logoutBtn.addEventListener('click', ()=>{
+      try { window.bcSounds.playLoginSound(); } catch(e){}
+      clearSession();
+      const aw = document.getElementById('authWrap');
+      if(aw) { 
+        aw.style.display = 'block'; 
+        aw.classList.remove('show-register','show-recover'); 
+        aw.classList.add('show-login'); 
+      }
+      const appRoot = document.getElementById('appRoot');
+      if(appRoot) appRoot.style.display = 'none';
+      setTimeout(()=> { 
+        const el = document.getElementById('loginEmail'); 
+        if(el) el.focus(); 
+      }, 120);
+    });
+  }
+
+}
+
+/* Render exercises list for a day */
+function renderExercisesForDay(day, plan, email){
+  const daysNames = { segunda:'Segunda', terca:'Terça', quinta:'Quinta', sexta:'Sexta' };
+  const container = document.getElementById('exList');
+  if(!container){ console.error('renderExercisesForDay: #exList não encontrado'); return; }
+  container.innerHTML = '';
+  const progressData = loadProgress(email) || {};
+  const dayProgress = progressData[day] || {};
+  const exercises = (plan.days && plan.days[day]) ? plan.days[day] : [];
+
+  const gLabel = (window.currentUserGender === 'feminino' ? 'Feminino' : 'Masculino');
+  const appRootEl = document.getElementById('appRoot') || {};
+  const dayTitles = (plan && plan.dayTitles) ? plan.dayTitles : null;
+  const specific = (dayTitles && dayTitles[day]) ? dayTitles[day] : null;
+  const trainTitleEl = document.getElementById('trainTitle');
+  if(trainTitleEl){
+    if(specific){
+      trainTitleEl.textContent = `${daysNames[day]} — ${gLabel} — ${specific}`;
+    } else {
+      const shortTitle = (appRootEl._currentPlan && appRootEl._currentPlan.title) ? appRootEl._currentPlan.title : '';
+      trainTitleEl.textContent = daysNames[day] + ' — ' + gLabel + (shortTitle ? ' — ' + shortTitle.split('—').pop().trim() : '');
+    }
+  }
+
+  const objectiveEl = document.getElementById('objectiveLabel');
+  if(objectiveEl) objectiveEl.textContent = plan.objective;
+
+  const total = exercises.length;
+  const done = exercises.filter(e => dayProgress[e.id]).length;
+  updateProgressUI(done, total);
+
+  if(total === 0){
+    container.innerHTML = `<div class="series-card"><div style="flex:1;color:var(--muted)">Sem treino para este dia.</div></div>`;
+    return;
+  }
+
+  exercises.forEach(ex=>{
+    const doneClass = dayProgress[ex.id] ? 'done' : '';
+    const card = document.createElement('div');
+    card.className = 'series-card';
+    card.innerHTML = `
+      <div class="left">●</div>
+      <div class="meta">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="flex:1">
+            <div style="font-weight:800;color:var(--white)">${escapeHtml(ex.name)}</div>
+            <small>${escapeHtml(ex.sets)} <button type="button" class="ver-video-btn" data-file="supino-reto.mp4">Ver vídeo</button></small>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+            <div style="font-size:12px" id="status_${ex.id}"><span class="status">${dayProgress[ex.id] ? 'feito' : 'pendente'}</span></div>
+            <div>
+              <button data-id="${ex.id}" class="check ${doneClass}" id="check_${ex.id}">${dayProgress[ex.id] ? '✓' : ''}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+
+    const btn = card.querySelector(`#check_${ex.id}`);
+    if(btn) btn.addEventListener('click', ()=> toggleExercise(email, day, ex.id, plan));
+  });
+
+  // ensure the active panel scrolls so the first item is visible (optional UX)
+  const sp = document.getElementById('seriesPanelRoot');
+  if(sp) {
+    // small delay to allow layout, then ensure top area keeps progress visible
+    setTimeout(()=> {
+      // if the list is tall, keep progress area visible and don't auto-scroll far
+      // (we only reset to top when changing day; here we leave it as user scrolled)
+    }, 60);
+  }
+}
+
+/* toggle exercise */
+function toggleExercise(email, day, exId, plan){
+  try{
+    const progressData = loadProgress(email) || {};
+    if(!progressData[day]) progressData[day] = {};
+    const currentlyDone = !!progressData[day][exId];
+    const newState = !currentlyDone;
+    if(newState){
+      // mark as done
+      progressData[day][exId] = { when: new Date().toISOString() };
+      try{ if(window.bcSounds && window.bcSounds.playCheckSound) window.bcSounds.playCheckSound(); }catch(e){}
+    } else {
+      // unmark
+      delete progressData[day][exId];
+      try{ if(window.bcSounds && window.bcSounds.playCalendarSound) window.bcSounds.playCalendarSound(); }catch(e){}
+    }
+    saveProgress(email, progressData);
+    renderExercisesForDay(day, plan, email);
+  }catch(err){
+    console.warn('toggleExercise error', err);
+  }
+}
+
+/* update progress UI */
+function updateProgressUI(done, total){
+  const counter = document.getElementById('progressCounter');
+  if(counter) counter.textContent = `${done}/${total}`;
+  const fill = document.getElementById('progressFill');
+  if(fill){
+    const pct = total === 0 ? 0 : Math.round((done/total)*100);
+    fill.style.width = pct + '%';
+  }
+}
+
+/* reset week */
+function resetWeek(email, plan){
+  localStorage.removeItem('bc_progress_' + email);
+  const active = document.querySelector('.tab.active');
+  const day = active ? active.dataset.day : 'segunda';
+  renderExercisesForDay(day, plan, email);
+}
+
+/* ===========================
+ Registration & Login handlers
+=========================== */
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const nameRegex = /^[A-Za-zÀ-ÖØ-öø-ÿ\s]+$/u;
+
+function formatCPF(value){
+  const digits = value.replace(/\D/g,'').slice(0,11);
+  const part1 = digits.slice(0,3);
+  const part2 = digits.slice(3,6);
+  const part3 = digits.slice(6,9);
+  const part4 = digits.slice(9,11);
+  let out = '';
+  if(part1) out += part1;
+  if(part2) out += '.' + part2;
+  if(part3) out += '.' + part3;
+  if(part4) out += '-' + part4;
+  return out;
+}
+function formatCell(value){
+  let d = value.replace(/\D/g,'');
+  if(d.startsWith('55')) d = d.slice(2);
+  d = d.slice(0,11);
+  if(d.length === 0) return '';
+  if(d.length <= 2) return '+55 ' + d;
+  if(d.length === 3) return '+55 ' + d.slice(0,2) + ' ' + d.slice(2);
+  if(d.length <= 6) return '+55 ' + d.slice(0,2) + ' ' + d.slice(2);
+  const ddd = d.slice(0,2);
+  const first = d.slice(2,3);
+  const mid = d.slice(3,7);
+  const last = d.slice(7);
+  let out = '+55 ' + ddd + ' ' + first + ' ' + mid;
+  if(last) out += '-' + last;
+  return out;
+}
+
+const regCpfInput = document.getElementById('regCpf');
+if(regCpfInput){ regCpfInput.addEventListener('input', (e)=>{ e.target.value = formatCPF(e.target.value); }); }
+const regCellInput = document.getElementById('regCell');
+if(regCellInput){ regCellInput.addEventListener('input', (e)=>{ e.target.value = formatCell(e.target.value); }); }
+const regNameInput = document.getElementById('regName');
+if(regNameInput){ regNameInput.addEventListener('input', (e)=>{ const cleaned = e.target.value.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ\s]/g,''); if(e.target.value !== cleaned) e.target.value = cleaned; }); }
+
+/* register */
+const registerBtn = document.getElementById('registerBtn');
+if(registerBtn) registerBtn.addEventListener('click', function(e){
+  e.preventDefault();
+  const email = (document.getElementById('regEmail').value||'').trim().toLowerCase();
+  if(!emailRegex.test(email)){ showModal({title:'Email inválido', text:'Informe um email válido (ex: nome@exemplo.com).', icon:'!', color:'#ef4444'}); return; }
+  const name = (document.getElementById('regName').value||'').trim();
+  if(!nameRegex.test(name) || name.length < 2){ showModal({title:'Nome inválido', text:'Informe seu nome corretamente (apenas letras).', icon:'!', color:'#ef4444'}); return; }
+  const cpfRaw = (document.getElementById('regCpf').value||'').trim();
+  const cpfDigits = cpfRaw.replace(/\D/g,'');
+  if(cpfRaw && cpfDigits.length !== 11){ showModal({title:'CPF inválido', text:'O CPF deve conter 11 dígitos (ex: 000.000.000-00).', icon:'!', color:'#ef4444'}); return; }
+  const cellRaw = (document.getElementById('regCell').value||'').trim();
+  const cellDigits = cellRaw.replace(/\D/g,'');
+  if(cellRaw && (cellDigits.length < 7 || cellDigits.length > 13)){ showModal({title:'Celular inválido', text:'Informe um celular válido (ex: +55 11 9 9999-9999).', icon:'!', color:'#ef4444'}); return; }
+
+  const pass = (document.getElementById('regPass').value||'').trim();
+  const cpf = cpfRaw ? formatCPF(cpfRaw) : '';
+  const cell = cellRaw || '';
+  const age = (document.getElementById('regAge').value||'').trim();
+  const pesoRaw = (document.getElementById('regWeight').value||'').trim();
+  const peso = pesoRaw ? parseFloat(pesoRaw.toString().replace(',','.')) : null;
+  const masculinidade = (document.getElementById('regMasc').value||'').trim();
+  const btn = document.querySelector('.goalBtn.selected');
+  const goal = btn ? btn.dataset.goal : null;
+
+  if(!name || !email || !pass){ showModal({title:'Dados incompletos', text:'Preencha nome, email e senha.', icon:'!', color:'#f59e0b'}); return; }
+  if(pass.length < 6){ showModal({title:'Senha fraca', text:'Use no mínimo 6 caracteres.', icon:'!', color:'#f97316'}); return; }
+  if(!goal){ showModal({title:'Escolha um objetivo', text:'Selecione uma opção rápida do questionário.', icon:'!', color:'#f97316'}); return; }
+  if(!masculinidade){ showModal({title:'Masculinidade', text:'Selecione a opção de masculinidade.', icon:'!', color:'#f97316'}); return; }
+
+  const users = loadUsers();
+  if(users[email]){ showModal({title:'Já existe', text:'Esse email já está cadastrado.', icon:'!', color:'#ef4444'}); return; }
+  users[email] = { name, email, passHash: simpleHash(pass), cpf, cell, age, goal, peso, masculinidade, created: new Date().toISOString() };
+  saveUsers(users);
+  setSession(email);
+  renderApp(users[email]);
+});
+
+/* login */
+const loginBtn = document.getElementById('loginBtn');
+if(loginBtn) loginBtn.addEventListener('click', function(e){
+  e.preventDefault();
+  const email = (document.getElementById('loginEmail').value||'').trim().toLowerCase();
+  const pass = (document.getElementById('loginPass').value||'').trim();
+  if(!emailRegex.test(email)){ showModal({title:'Email inválido', text:'Informe um email válido para entrar.', icon:'!', color:'#ef4444'}); return; }
+  const users = loadUsers();
+  if(!email || !pass){ showModal({title:'Preencha os campos', text:'Informe email e senha.', icon:'!', color:'#f59e0b'}); return; }
+  const u = users[email];
+  if(!u){ showModal({title:'Conta não encontrada', text:'Crie uma conta primeiro.', icon:'!', color:'#ef4444'}); return; }
+  if(u.passHash !== simpleHash(pass)){ showModal({title:'Senha incorreta', text:'Verifique a senha informada.', icon:'!', color:'#ef4444'}); return; }
+  setSession(email);
+  renderApp(u);
+});
+
+/* auto open if session exists */
+window.addEventListener('DOMContentLoaded', ()=>{
+  const s = getSession();
+  if(s){
+    const users = loadUsers();
+    const u = users[s];
+    if(u){ window.currentUserGender = u.masculinidade || 'masculino'; renderApp(u); return; }
+  }
+  authWrap.classList.remove('show-register','show-recover'); authWrap.classList.add('show-login');
+  setTimeout(()=> { const el = document.getElementById('loginEmail'); if(el) el.focus(); }, 80);
+});
+
+/* close modal when clicking backdrop */
+document.getElementById('modalBackdrop').addEventListener('click', (e)=>{ if(e.target === document.getElementById('modalBackdrop')) closeModal(); });
+
+/* ===========================
+ Calendar helper functions
+   (kept minimal - same behavior)
+=========================== */
+function initCalendar(container){
+  // basic calendar rendering
+  const calGrid = document.getElementById('calGrid');
+  const calMonthLabel = document.getElementById('calMonthLabel');
+  if(!calGrid || !calMonthLabel) return;
+  let current = new Date();
+  function render(){
+    calGrid.innerHTML = '';
+    calMonthLabel.textContent = current.toLocaleString('pt-BR',{ month:'long', year:'numeric' });
+    const first = new Date(current.getFullYear(), current.getMonth(), 1);
+    const start = first.getDay(); // 0-dom ..6
+    const days = new Date(current.getFullYear(), current.getMonth()+1, 0).getDate();
+    // padding days (previous month)
+    const prevMonthDays = new Date(current.getFullYear(), current.getMonth(), 0).getDate();
+    for(let i=0;i<start;i++){
+      const d = document.createElement('div'); d.className='cal-cell other'; d.textContent = (prevMonthDays - start + 1 + i); calGrid.appendChild(d);
+    }
+    for(let d=1; d<=days; d++){
+      const cell = document.createElement('div'); cell.className='cal-cell'; cell.textContent = d;
+      const today = new Date();
+      if(d===today.getDate() && current.getMonth()===today.getMonth() && current.getFullYear()===today.getFullYear()){
+        cell.classList.add('today');
+      }
+      calGrid.appendChild(cell);
+    }
+    // fill to complete grid (optional)
+    while(calGrid.children.length % 7 !== 0){ const e = document.createElement('div'); e.className='cal-cell other'; e.textContent=''; calGrid.appendChild(e); }
+  }
+  render();
+  document.getElementById('calPrev').addEventListener('click', ()=> { current = new Date(current.getFullYear(), current.getMonth()-1, 1); render(); });
+  document.getElementById('calNext').addEventListener('click', ()=> { current = new Date(current.getFullYear(), current.getMonth()+1, 1); render(); });
+}
+
+function setupCalendarButtons(){
+  const toggleCalendar = document.getElementById('toggleCalendar');
+  const wrap = document.getElementById('calendarWrap');
+  if(toggleCalendar && wrap){
+    toggleCalendar.addEventListener('click', ()=> { wrap.style.display = (wrap.style.display === 'none' || wrap.style.display === '') ? 'block' : 'none'; });
+  }
+}
+
+function renderCalendarMarks(email){
+  // noop for demo
+}
+
+/* end of file */
+</script>
+
+<script>
+/* forceMonstroEnforced: garante que o monstro fique sempre ligado e o botão desabilitado */
+document.addEventListener('DOMContentLoaded', function(){
+  try{
+    const root = document.getElementById('appRoot');
+    if(root && !root.classList.contains('visible')) root.classList.add('visible');
+    if(root && !root.classList.contains('monstro')) root.classList.add('monstro');
+    const b = document.getElementById('monstroBtn');
+    if(b){
+      b.dataset.on = '1';
+      b.textContent = 'MONSTRO ON';
+      b.disabled = true;
+      b.setAttribute('aria-disabled','true');
+      // remove any click listeners by cloning
+      const nb = b.cloneNode(true);
+      b.parentNode.replaceChild(nb,b);
+    }
+  }catch(e){
+    console && console.warn && console.warn('forceMonstroEnforced error', e);
+  }
+});
+</script>
+
+
+<!-- BEGIN: BC Sounds (motivacional / academia) -->
+<script>
+/* ---- Sound engine (Estilo: motivacional / academia) ---- */
+(function(){
+  const AudioContextCls = window.AudioContext || window.webkitAudioContext;
+  if(!AudioContextCls) return console.warn('AudioContext não disponível');
+  const ctx = new AudioContextCls();
+  let masterGain = ctx.createGain();
+  masterGain.gain.value = 0.9;
+  masterGain.connect(ctx.destination);
+
+  function now(){ return ctx.currentTime; }
+
+  function tone({freq=440, type='sine', dur=0.25, attack=0.005, release=0.12, gain=0.7, detune=0}){
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    if(o.detune) o.detune.value = detune;
+    g.gain.value = 0;
+    o.connect(g);
+    g.connect(masterGain);
+    const t0 = now();
+    o.start(t0);
+    g.gain.cancelScheduledValues(t0);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + release);
+    o.stop(t0 + dur + release + 0.02);
+  }
+
+  function playCalendarSound(){
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    const t0 = now();
+    o.type = 'square';
+    o.frequency.setValueAtTime(1200, t0);
+    o.connect(g);
+    g.connect(masterGain);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.8, t0 + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+    o.start(t0);
+    o.stop(t0 + 0.18);
+  }
+
+  function playCheckSound(){
+    tone({freq: 1200, type:'sine', dur:0.12, attack:0.002, release:0.08, gain:0.55});
+    setTimeout(()=> tone({freq: 720, type:'sine', dur:0.22, attack:0.002, release:0.12, gain:0.45}), 60);
+  }
+
+  function playLoginSound(){
+    tone({freq: 120, type:'sine', dur:0.32, attack:0.01, release:0.18, gain:0.8, detune:0});
+    setTimeout(()=> tone({freq: 420, type:'triangle', dur:0.12, attack:0.002, release:0.08, gain:0.35}), 160);
+  }
+
+  function playRegisterSound(){
+    tone({freq: 880, type:'sine', dur:0.14, attack:0.002, release:0.12, gain:0.6});
+    setTimeout(()=> tone({freq: 1100, type:'sine', dur:0.2, attack:0.002, release:0.14, gain:0.55}), 110);
+    setTimeout(()=> tone({freq: 740, type:'triangle', dur:0.18, attack:0.002, release:0.12, gain:0.45}), 260);
+  }
+
+  window.bcSounds = {
+    playCalendarSound,
+    playCheckSound,
+    playLoginSound,
+    playRegisterSound,
+    _ctx: ctx
+  };
+
+  function ensureResume(){
+    if(ctx.state === 'suspended'){
+      ctx.resume().catch(()=>{/* ignore */});
+    }
+    window.removeEventListener('pointerdown', ensureResume);
+    window.removeEventListener('touchstart', ensureResume);
+    window.removeEventListener('keydown', ensureResume);
+  }
+  window.addEventListener('pointerdown', ensureResume);
+  window.addEventListener('touchstart', ensureResume);
+  window.addEventListener('keydown', ensureResume);
+
+  const registerBtn = document.getElementById('registerBtn');
+  if(registerBtn){
+    registerBtn.addEventListener('click', function(){
+      setTimeout(()=>{
+        if(document.getElementById('appRoot') && document.getElementById('appRoot').style.display !== 'none'){
+          try{ window.bcSounds.playRegisterSound(); }catch(e){/*noop*/ }
+        }
+      }, 320);
+    });
+  }
+
+  const loginBtn = document.getElementById('loginBtn');
+  if(loginBtn){
+    loginBtn.addEventListener('click', function(){
+      setTimeout(()=>{
+        if(document.getElementById('appRoot') && document.getElementById('appRoot').style.display !== 'none'){
+          try{ window.bcSounds.playLoginSound(); }catch(e){/*noop*/ }
+        }
+      }, 280);
+    });
+  }
+
+  const exList = document.getElementById('exList');
+  if(exList){
+    exList.addEventListener('click', function(ev){
+      const ck = ev.target.closest('.check');
+      if(!ck) return;
+      const done = ck.classList.contains('done');
+      const card = ck.closest('.series-card');
+
+      let statusEl = card ? card.querySelector('[id^="status_"]') : null;
+      let exId = null;
+      if(statusEl && statusEl.id && statusEl.id.indexOf('status_') === 0) exId = statusEl.id.replace('status_','');
+
+      // Atualiza visual
+      if(done){
+        ck.classList.remove('done');
+        if(statusEl) statusEl.innerHTML = `<span class="status">Pendente</span>`;
+        try { window.bcSounds.playCalendarSound(); } catch(e){} // som ao desmarcar
+      } else {
+        ck.classList.add('done');
+        if(statusEl) statusEl.innerHTML = `<span class="status">Concluído</span>`;
+        try { window.bcSounds.playCheckSound(); } catch(e){} // som ao marcar
+      }
+
+      // Atualiza storage + progresso
+      try{
+        const email = (window.localStorage.getItem('bc_session_v1') || null);
+        if(email && exId){
+          const progress = JSON.parse(localStorage.getItem('bc_progress_' + email) || '{}');
+          let activeTab = document.querySelector('.daysTabs .tab.active');
+          let day = activeTab ? activeTab.dataset.day : 'segunda';
+
+          progress[day] = progress[day] || {};
+
+          if(done){
+            delete progress[day][exId];
+          } else {
+            progress[day][exId] = { when: new Date().toISOString() };
+          }
+
+          localStorage.setItem('bc_progress_' + email, JSON.stringify(progress));
+
+          try{ 
+            if(typeof updateProgressUI === 'function'){ 
+              const total = card.parentNode.querySelectorAll('.series-card').length;
+              const doneCount = card.parentNode.querySelectorAll('.check.done').length;
+              updateProgressUI(doneCount, total);
+            }
+          }catch(e){}
+        }
+      }catch(e){ console.warn('save progress error', e); }
+    });
+  }
+
+  const calGrid = document.getElementById('calGrid');
+  if(calGrid){
+    calGrid.addEventListener('click', function(ev){
+      const cell = ev.target.closest('.cal-cell');
+      if(!cell) return;
+      const wasActive = cell.classList.contains('active');
+      if(wasActive){
+        cell.classList.remove('active');
+      } else {
+        cell.classList.add('active');
+      }
+      try{ window.bcSounds.playCalendarSound(); }catch(e){}
+      try{
+        const email = (window.localStorage.getItem('bc_session_v1') || null);
+        if(email){
+          const key = 'bc_marks_' + email;
+          const marks = JSON.parse(localStorage.getItem(key) || '{}');
+          const y = cell.dataset.year || null;
+          const m = cell.dataset.month || null;
+          const d = cell.dataset.date || null;
+          if(y && m && d){
+            const stamp = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            if(wasActive){
+              delete marks[stamp];
+            } else {
+              marks[stamp] = { when: new Date().toISOString() };
+            }
+            localStorage.setItem(key, JSON.stringify(marks));
+          }
+        }
+      }catch(e){}
+    });
+  }
+
+  const markDayBtn = document.getElementById('markDayBtn');
+  const removeMarkBtn = document.getElementById('removeMarkBtn');
+  if(markDayBtn) markDayBtn.addEventListener('click', ()=>{ try{ window.bcSounds.playCalendarSound(); }catch(e){} });
+  if(removeMarkBtn) removeMarkBtn.addEventListener('click', ()=>{ try{ window.bcSounds.playCalendarSound(); }catch(e){} });
+
+})();
+</script>
+<!-- END: BC Sounds -->
+
+<script>
+/* ==== CALENDAR OVERRIDE (FIXED) ==== */
+(function(){
+  const KEY = email => 'bc_calendar_'+email;
+  let calDate = new Date();
+  let activeDate = null, activeVal = null;
+
+  function load(email){
+    try{ return JSON.parse(localStorage.getItem(KEY(email))||'{}'); }catch(e){ return {}; }
+  }
+  function save(email,data){
+    localStorage.setItem(KEY(email), JSON.stringify(data));
+  }
+
+  function openModalFor(dateKey){
+    activeDate = dateKey;
+    activeVal = null;
+    showModal({
+      title:'Marcar treino',
+      text:'Selecione a letra do treino realizado',
+      buttons:[
+        {label:'S', className:'btn', handler:()=>setVal('S')},
+        {label:'T', className:'btn', handler:()=>setVal('T')},
+        {label:'Q', className:'btn', handler:()=>setVal('Q')},
+        {label:'Qi', className:'btn', handler:()=>setVal('Qi')},
+        {label:'Se', className:'btn', handler:()=>setVal('Se')},
+        {label:'Remover', className:'btn ghost', handler:removeVal}
+      ]
+    });
+  }
+  function setVal(v){
+    const email = getSession();
+    if(!email || !activeDate) return;
+    const d = load(email);
+    d[activeDate] = v;
+    save(email,d);
+    closeModal();
+    renderCalendar();
+  }
+  function removeVal(){
+    const email = getSession();
+    if(!email || !activeDate) return;
+    const d = load(email);
+    delete d[activeDate];
+    save(email,d);
+    closeModal();
+    renderCalendar();
+  }
+
+  function renderCalendar(){
+    const email = getSession();
+    if(!email) return;
+    const grid = document.getElementById('calGrid');
+    const label = document.getElementById('calMonthLabel');
+    if(!grid || !label) return;
+
+    grid.innerHTML='';
+    const y = calDate.getFullYear();
+    const m = calDate.getMonth();
+    label.textContent = calDate.toLocaleString('pt-BR',{month:'long',year:'numeric'});
+
+    const first = new Date(y,m,1).getDay();
+    const days = new Date(y,m+1,0).getDate();
+    const data = load(email);
+
+    for(let i=0;i<first;i++){
+      const e=document.createElement('div');
+      e.className='cal-cell other';
+      grid.appendChild(e);
+    }
+    for(let d=1; d<=days; d++){
+      const key = new Date(y,m,d).toISOString().slice(0,10);
+      const c=document.createElement('div');
+      c.className='cal-cell';
+      c.textContent=d;
+      if(data[key]){
+        c.classList.add('active');
+        const b=document.createElement('div');
+        b.className='mark-badge';
+        b.textContent=data[key];
+        c.appendChild(b);
+      }
+      c.onclick=()=>openModalFor(key);
+      grid.appendChild(c);
+    }
+  }
+
+  document.addEventListener('click',e=>{
+    if(e.target && e.target.id==='calPrev'){ calDate.setMonth(calDate.getMonth()-1); renderCalendar(); }
+    if(e.target && e.target.id==='calNext'){ calDate.setMonth(calDate.getMonth()+1); renderCalendar(); }
+    if(e.target && e.target.id==='toggleCalendar'){
+      setTimeout(renderCalendar,50);
+    }
+  });
+
+  window.renderCalendar = renderCalendar;
+})();
+</script>
+
+
+<script>
+/* === Calendar FX & Sounds (restored) === */
+(function(){
+  function playMarkFX(){
+    try{
+      if(window.bcSounds && bcSounds.playSuccess) bcSounds.playSuccess();
+      if(window.emit){
+        const r = document.getElementById('calendarWrap');
+        if(r){
+          const rect = r.getBoundingClientRect();
+          emit(rect.left + rect.width/2, rect.top + 40);
+        }
+      }
+    }catch(e){}
+  }
+
+  // hook into calendar actions
+  const _oldRender = window.renderCalendar;
+  window.renderCalendar = function(){
+    _oldRender && _oldRender();
+  };
+
+  // intercept modal save/remove via mutation
+  const obs = new MutationObserver(()=>{
+    const actions = document.getElementById('modalActions');
+    if(!actions) return;
+    actions.querySelectorAll('button').forEach(btn=>{
+      if(btn._fxBound) return;
+      btn._fxBound = true;
+      btn.addEventListener('click', ()=>{
+        playMarkFX();
+      });
+    });
+  });
+  obs.observe(document.body,{childList:true,subtree:true});
+})();
+</script>
+
+
+<script>
+/* === Calendar Sound FIX (fallback guaranteed) === */
+(function(){
+  function playCalendarSound(){
+    try{
+      if(window.bcSounds){
+        if(bcSounds.playSuccess) return bcSounds.playSuccess();
+        if(bcSounds.playBox) return bcSounds.playBox();
+        if(bcSounds.playClick) return bcSounds.playClick();
+      }
+    }catch(e){}
+    // fallback beep (guaranteed)
+    try{
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type='sine'; o.frequency.value=880;
+      g.gain.value=0.12;
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      setTimeout(()=>{o.stop();ctx.close();},120);
+    }catch(e){}
+  }
+
+  const obs = new MutationObserver(()=>{
+    const actions = document.getElementById('modalActions');
+    if(!actions) return;
+    actions.querySelectorAll('button').forEach(btn=>{
+      if(btn._soundBound) return;
+      btn._soundBound = true;
+      btn.addEventListener('click', playCalendarSound);
+    });
+  });
+  obs.observe(document.body,{childList:true,subtree:true});
+})();
+</script>
+
+
+<script>
+/* === EFFECTS IMPORTED FROM ULTRA (index 3) === */
+/* ============================
+   Áudios (check & success)
+   ============================ */
+const soundCheck = new Audio("https://assets.mixkit.co/active_storage/sfx/1792/1792-preview.mp3"); // tick
+const soundSuccess = new Audio("https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3"); // success
+soundCheck.volume = 0.45;
+soundSuccess.volume = 0.7;
+
+
+
+/* === HOOK EFFECTS INTO V6 === */
+(function(){
+  // hook series check
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.type === 'checkbox' && e.target.checked){
+      try{ soundCheck.currentTime=0; soundCheck.play(); }catch(e){}
+      try{ tinyBurstFromElement(e.target); }catch(e){}
+    }
+  });
+
+  // hook calendar save/remove
+  window._oldSaveMark = window.saveMark;
+  window.saveMark = function(){
+    _oldSaveMark && _oldSaveMark();
+    try{ soundSuccess.currentTime=0; soundSuccess.play(); }catch(e){}
+  };
+})();
+</script>
+
+
+<!-- FULLSCREEN VIDEO PLAYER -->
+<video id="fsVideo" playsinline controls
+  style="
+    position:fixed;
+    inset:0;
+    width:100vw;
+    height:100vh;
+    background:#000;
+    z-index:999999;
+    display:none;
+  ">
+</video>
+
+<button id="fsBackBtn"
+  style="
+    position:fixed;
+    top:16px;
+    left:16px;
+    z-index:1000000;
+    display:none;
+    padding:10px 14px;
+    border-radius:10px;
+    border:none;
+    font-weight:800;
+    background:#ff3b1f;
+    color:#071322;
+  ">← Voltar</button>
+
+<script>
+/* === FULLSCREEN VIDEO (STABLE MODE) === */
+(function(){
+  const video = document.getElementById('fsVideo');
+  const back = document.getElementById('fsBackBtn');
+
+  function openVideo(file){
+    video.src = 'videos/' + file;
+    video.style.display = 'block';
+    back.style.display = 'block';
+    video.play().catch(()=>{});
+  }
+
+  function closeVideo(){
+    video.pause();
+    video.src = '';
+    video.style.display = 'none';
+    back.style.display = 'none';
+  }
+
+  back.onclick = closeVideo;
+
+  document.addEventListener('click',e=>{
+    const a = e.target.closest('.video-link');
+    if(!a) return;
+    e.preventDefault();
+    if(!a.dataset.file){
+      alert('Vídeo não configurado');
+      return;
+    }
+    openVideo(a.dataset.file);
+  });
+})();
+</script>
+
+
+<script>
+/* === FORCE VIDEO OVERRIDE (FINAL) === */
+(function(){
+  const video = document.getElementById('fsVideo');
+  const back = document.getElementById('fsBackBtn');
+
+  function openVideo(file){
+    video.src = 'videos/' + file;
+    video.style.display = 'block';
+    back.style.display = 'block';
+    video.play().catch(()=>{});
+  }
+
+  function closeVideo(){
+    video.pause();
+    video.src = '';
+    video.style.display = 'none';
+    back.style.display = 'none';
+  }
+
+  back.onclick = closeVideo;
+
+  // CAPTURE MODE: block any previous navigation
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest('.video-link');
+    if(!btn) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    e.stopPropagation();
+
+    const file = btn.dataset.file;
+    if(!file){
+      alert('Vídeo não configurado');
+      return;
+    }
+    openVideo(file);
+  }, true);
+})();
+</script>
+
+
+<script>
+/* === VIDEO FULLSCREEN BUTTON MODE (FINAL) === */
+(function(){
+  const video = document.getElementById('fsVideo');
+  const back  = document.getElementById('fsBackBtn');
+
+  function abrirVideo(file){
+    video.src = 'videos/' + file;
+    video.style.display = 'block';
+    back.style.display  = 'block';
+    video.play().catch(()=>{});
+  }
+
+  function fecharVideo(){
+    video.pause();
+    video.src = '';
+    video.style.display = 'none';
+    back.style.display  = 'none';
+  }
+
+  back.onclick = fecharVideo;
+
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest('.ver-video-btn');
+    if(!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    abrirVideo(btn.dataset.file);
+  });
+})();
+</script>
+
+
+<script>
+/* =========================
+ FIX DEFINITIVO DE VÍDEOS
+========================= */
+(function(){
+
+  // SOBRESCREVE qualquer versão antiga
+  window.renderExercisesForDay = function(day, plan, email){
+    const container = document.getElementById('exList');
+    if(!container) return;
+
+    container.innerHTML = '';
+    const exercises = (plan.days && plan.days[day]) ? plan.days[day] : [];
+
+    exercises.forEach(ex => {
+      const card = document.createElement('div');
+      card.className = 'series-card';
+
+      card.innerHTML = `
+        <div class="left">
+          <div class="dot"></div>
+          <div>
+            <div class="title">${ex.name}</div>
+            <div class="sets">${ex.sets}</div>
+          </div>
+        </div>
+        <div class="right">
+          <button class="ver-video-btn" data-file="${ex.video}">Ver vídeo</button>
+        </div>
+      `;
+
+      container.appendChild(card);
+    });
+  };
+
+  const video = document.getElementById('fsVideo');
+  const back  = document.getElementById('fsBackBtn');
+
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest('.ver-video-btn');
+    if(!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const file = btn.dataset.file;
+    if(!file || file === '#') return;
+
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+
+    video.src = 'videos/' + file;
+    video.style.display = 'block';
+    if(back) back.style.display = 'block';
+
+    video.play().catch(()=>{});
+  });
+
+  if(back){
+    back.addEventListener('click', ()=>{
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.style.display = 'none';
+      back.style.display = 'none';
+    });
+  }
+
+})();
+</script>
+
+
+<script>
+/* ===== RENDER SÉRIES FINAL COM CHECK ===== */
+window.renderExercisesForDay = function(day, plan, email){
+  const container = document.getElementById('exList');
+  if(!container) return;
+
+  container.innerHTML = '';
+  const exercises = (plan.days && plan.days[day]) ? plan.days[day] : [];
+
+  exercises.forEach(ex=>{
+    const card = document.createElement('div');
+    card.className = 'series-card';
+
+    card.innerHTML = `
+      <div class="left">
+        <div class="dot"></div>
+        <div>
+          <div class="title">${ex.name}</div>
+          <div class="sets">${ex.sets}</div>
+        </div>
+      </div>
+      <div class="right">
+        <button class="ver-video-btn" data-file="${ex.video}">Ver vídeo</button>
+        <div class="series-check" data-id="${ex.id}"></div>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+};
+</script>
+
+
+<script>
+/* ===== PROGRESSO AUTOMÁTICO + CONTADOR ===== */
+
+
+function atualizarProgresso() {
+  const cards = document.querySelectorAll('.series-card');
+  const total = cards.length;
+  let feitos = 0;
+
+  cards.forEach(card => {
+    if (card.classList.contains('done')) feitos++;
+  });
+
+  const texto = document.getElementById('progressText');
+  const barra = document.querySelector('.progressFill');
+
+  if (texto) texto.innerText = `${feitos}/${total}`;
+  if (barra) {
+    const pct = total > 0 ? (feitos / total) * 100 : 0;
+    barra.style.width = `${pct}%`;
+  }
+}
+
+
+  const feitos = document.querySelectorAll('.series-check.checked').length;
+  const total = checks.length;
+
+  if (total === 0) {
+    if (barra) barra.style.width = '0%';
+    if (texto) texto.textContent = '';
+    return;
+  }
+
+  const porcentagem = Math.round((feitos / total) * 100);
+
+  if (barra) barra.style.width = porcentagem + '%';
+  if (texto) texto.textContent = feitos + '/' + total;
+}
+
+document.addEventListener('click', function (e) {
+  const check = e.target.closest('.series-check');
+  if (!check) return;
+
+  check.classList.toggle('checked');
+  atualizarProgresso();
+});
+</script>
+
+
+<style>
+/* ===== TIPOGRAFIA PREMIUM + ANIMAÇÕES – SÉRIES ===== */
+
+.series-card .title{
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:0.25px;
+  color:#eef4ff;
+}
+
+.series-card .sets{
+  font-size:12px;
+  font-weight:500;
+  letter-spacing:0.35px;
+  color:rgba(160,190,220,0.7);
+  margin-top:4px;
+}
+
+.series-card{
+  line-height:1.3;
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.series-card.done{
+  background:linear-gradient(180deg, rgba(34,197,94,0.12), rgba(0,0,0,0.12));
+  box-shadow:0 0 0 1px rgba(34,197,94,0.25), 0 12px 30px rgba(0,0,0,0.45);
+}
+
+.series-card.done .title{ opacity:.75; }
+.series-card.done .sets{ opacity:.55; }
+
+.series-check{
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.series-check.checked{
+  animation:popCheck .28s ease;
+  box-shadow:0 0 0 6px rgba(34,197,94,0.18);
+}
+
+@keyframes popCheck{
+  0%{transform:scale(.7)}
+  60%{transform:scale(1.15)}
+  100%{transform:scale(1)}
+}
+</style>
+
+<script>
+// ===== ANIMAÇÃO + ESTADO CONCLUÍDO (SUTIL) =====
+document.addEventListener('click', function(e){
+  const check = e.target.closest('.series-check');
+  if(!check) return;
+
+  const card = check.closest('.series-card');
+  if(!card) return;
+
+  check.classList.toggle('checked');
+  card.classList.toggle('done');
+
+  card.animate([
+    {transform:'scale(0.98)'},
+    {transform:'scale(1)'}
+  ], {duration:180, easing:'ease-out'});
+});
+</script>
+
+
+<script>
+// ===== FIX DEFINITIVO: CHECKBOX + PROGRESSO + SOM =====
+
+// sons simples em base64 (click success)
+const soundCheck = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
+const soundUncheck = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
+
+document.addEventListener('click', function(e){
+  const box = e.target.closest('.series-check');
+  if(!box) return;
+
+  const card = box.closest('.series-card');
+  if(!card) return;
+
+  const wasChecked = box.classList.contains('checked');
+
+  // toggle visual
+  box.classList.toggle('checked');
+  card.classList.toggle('done');
+
+  // animação sutil
+  card.animate([{transform:'scale(.98)'},{transform:'scale(1)'}],{duration:180,easing:'ease-out'});
+
+  // PROGRESSO
+  const total = document.querySelectorAll('.series-card').length;
+  const checked = document.querySelectorAll('.series-check.checked').length;
+
+  const label = document.querySelector('.progressBox strong');
+  const bar = document.querySelector('.progressFill');
+
+  if(label) label.textContent = checked + "/" + total;
+  if(bar) bar.style.width = ((checked/total)*100) + "%";
+
+  // SOM
+  try{
+    if(!wasChecked){
+      soundCheck.currentTime = 0;
+      soundCheck.play();
+    } else {
+      soundUncheck.currentTime = 0;
+      soundUncheck.play();
+    }
+  }catch(err){}
+});
+</script>
+
+
+<audio id="soundCheck" src="check.mp3" preload="auto"></audio>
+<audio id="soundUncheck" src="uncheck.mp3" preload="auto"></audio>
+
+<script>
+/* ===== FIX PROGRESSO DEFINITIVO ===== */
+
+
+function atualizarProgresso() {
+  const cards = document.querySelectorAll('.series-card');
+  const total = cards.length;
+  let feitos = 0;
+
+  cards.forEach(card => {
+    if (card.classList.contains('done')) feitos++;
+  });
+
+  const texto = document.getElementById('progressText');
+  const barra = document.querySelector('.progressFill');
+
+  if (texto) texto.innerText = `${feitos}/${total}`;
+  if (barra) {
+    const pct = total > 0 ? (feitos / total) * 100 : 0;
+    barra.style.width = `${pct}%`;
+  }
+}
+
+}
+  if (barra) barra.style.width = total ? `${(feitos / total) * 100}%` : '0%';
+}
+
+
+function toggleSerie(card) {
+  const soundCheck = document.getElementById('soundCheck');
+  const soundUncheck = document.getElementById('soundUncheck');
+
+  const marcado = card.classList.toggle('done');
+
+  const check = card.querySelector('.series-check');
+  if (check) check.classList.toggle('checked', marcado);
+
+  if (marcado) {
+    soundCheck && soundCheck.play();
+  } else {
+    soundUncheck && soundUncheck.play();
+  }
+
+  atualizarProgresso();
+}
+
+  atualizarProgresso();
+}
+
+document.addEventListener('DOMContentLoaded', atualizarProgresso);
+</script>
+
+</body>
+</html>
