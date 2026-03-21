@@ -38,9 +38,9 @@ interface ExitParams {
 }
 
 const DEFAULT_EXIT_PARAMS: ExitParams = {
-  timeoutSeconds: 240, // 4 minutes (within 5-min window)
-  profitTargetPct: 3.0, // 3% profit target
-  stopLossPct: 2.0, // 2% stop loss
+  timeoutSeconds: 270, // 4.5 minutes (within 5-min window)
+  profitTargetPct: 2.0, // 2% profit target — more achievable
+  stopLossPct: 3.0, // 3% stop loss — wider to avoid noise triggers
 };
 
 export class StrategyEngine {
@@ -127,8 +127,8 @@ export class StrategyEngine {
     // Skip rejected opportunities
     if (opp.rejected) return;
 
-    // Minimum score threshold — lowered to 15 to catch more opportunities
-    const MIN_SCORE = 15;
+    // Minimum score threshold — balanced: requires decent signal quality
+    const MIN_SCORE = 25;
     if (opp.score < MIN_SCORE) {
       log.debug('Opportunity score too low', { score: opp.score, min: MIN_SCORE });
       return;
@@ -196,9 +196,10 @@ export class StrategyEngine {
       const book = this.marketData.getCurrentBook();
       if (!book) continue;
 
-      const currentPrice = book.midPrice;
+      // Use realistic exit price: sell at bid (not mid) for more accurate PnL
+      const exitPrice = book.bestBid;
       const holdTime = (now - trade.entryTimestamp) / 1000;
-      const priceDelta = currentPrice - trade.entryPrice;
+      const priceDelta = exitPrice - trade.entryPrice;
       const pricePct = (priceDelta / trade.entryPrice) * 100;
 
       let exitReason: ExitReason | null = null;
@@ -228,7 +229,7 @@ export class StrategyEngine {
       }
 
       if (exitReason) {
-        const closed = this.paperEngine.closeTrade(trade.id, currentPrice, exitReason);
+        const closed = this.paperEngine.closeTrade(trade.id, exitPrice, exitReason);
         if (closed && closed.pnl !== null) {
           this.riskManager.recordTradeClosed(closed.pnl);
           log.info('TRADE CLOSED', {

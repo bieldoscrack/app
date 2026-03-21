@@ -57,6 +57,9 @@ async function main(): Promise<void> {
 
   const externalFeed = new ExternalPriceFeed(config);
   const marketData = new PolymarketDataClient(config);
+
+  // Couple simulated book to external BTC price so it tracks real movements
+  marketData.setExternalPriceGetter(() => externalFeed.getCurrentPrice());
   const riskManager = new RiskManager(config);
 
   const detector = new OpportunityDetector(config, externalFeed, marketData);

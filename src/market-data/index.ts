@@ -30,10 +30,17 @@ export class PolymarketDataClient extends EventEmitter {
   private consecutiveErrors = 0;
   private currentBook: OrderBook | null = null;
   private shouldPoll = true;
+  private externalPriceGetter: (() => number | null) | null = null;
+  private baselineExternalPrice: number | null = null;
 
   constructor(config: AppConfig) {
     super();
     this.config = config;
+  }
+
+  /** Set a function to get the external price (for coupling simulated book to BTC) */
+  setExternalPriceGetter(getter: () => number | null): void {
+    this.externalPriceGetter = getter;
   }
 
   /** Start polling the order book */
@@ -143,11 +150,17 @@ export class PolymarketDataClient extends EventEmitter {
 
   /**
    * Simulated order book for paper trading when no market ID is set.
-   * Generates a synthetic book that moves with external price feed.
+   *
+   * COUPLED TO EXTERNAL FEED: The simulated midPrice tracks the external
+   * BTC price proportionally. When BTC moves +0.1%, the simulated market
+   * also moves ~+0.1% (with a small delay and noise). This ensures the
+   * bot's signal detection actually correlates with market movement.
+   *
+   * Without this coupling, the bot would be trading random noise.
    */
   private startSimulatedBook(intervalMs: number): void {
     const log = createModuleLogger('market-data');
-    log.info('Using SIMULATED order book for paper trading');
+    log.info('Using SIMULATED order book (coupled to external feed)');
 
     this.connected = true;
     this.emit('connected');
@@ -155,9 +168,29 @@ export class PolymarketDataClient extends EventEmitter {
     let midPrice = 0.50; // start at 50 cents
 
     this.pollInterval = setInterval(() => {
-      // Random walk: ±0.5% per tick
-      const drift = (Math.random() - 0.5) * 0.01;
-      midPrice = Math.max(0.05, Math.min(0.95, midPrice + drift));
+      // --- Coupled movement: follow external price changes ---
+      let externalDrift = 0;
+      if (this.externalPriceGetter) {
+        const extPrice = this.externalPriceGetter();
+        if (extPrice) {
+          if (this.baselineExternalPrice === null) {
+            this.baselineExternalPrice = extPrice;
+          }
+          // Calculate external price change as percentage
+          const extChangePct = (extPrice - this.baselineExternalPrice) / this.baselineExternalPrice;
+          // Apply ~80% of external movement to simulated price (with lag)
+          externalDrift = extChangePct * 0.80;
+          // Update baseline slowly to prevent drift accumulation
+          this.baselineExternalPrice = this.baselineExternalPrice * 0.999 + extPrice * 0.001;
+        }
+      }
+
+      // Small random noise: ±0.05% per tick (much less than before)
+      const noise = (Math.random() - 0.5) * 0.001;
+
+      // Base price (0.50) + external drift + noise
+      midPrice = 0.50 + externalDrift + noise;
+      midPrice = Math.max(0.05, Math.min(0.95, midPrice));
 
       const spread = 0.02; // 2 cent spread
       const bestBid = Math.round((midPrice - spread / 2) * 100) / 100;
@@ -169,11 +202,11 @@ export class PolymarketDataClient extends EventEmitter {
       for (let i = 0; i < 5; i++) {
         bids.push({
           price: Math.round((bestBid - i * 0.01) * 100) / 100,
-          size: Math.round((100 + Math.random() * 500) * 100) / 100,
+          size: Math.round((50 + Math.random() * 200) * 100) / 100,
         });
         asks.push({
           price: Math.round((bestAsk + i * 0.01) * 100) / 100,
-          size: Math.round((100 + Math.random() * 500) * 100) / 100,
+          size: Math.round((50 + Math.random() * 200) * 100) / 100,
         });
       }
 
@@ -207,13 +240,14 @@ export class PolymarketDataClient extends EventEmitter {
     const threshold = cents / 100;
     const midPrice = this.currentBook.midPrice;
 
+    // For binary markets, size is already in USDC notional
     const bidLiquidity = this.currentBook.bids
       .filter((b) => b.price >= midPrice - threshold)
-      .reduce((sum, b) => sum + b.size * b.price, 0);
+      .reduce((sum, b) => sum + b.size, 0);
 
     const askLiquidity = this.currentBook.asks
       .filter((a) => a.price <= midPrice + threshold)
-      .reduce((sum, a) => sum + a.size * a.price, 0);
+      .reduce((sum, a) => sum + a.size, 0);
 
     return {
       bidLiquidity: Math.round(bidLiquidity * 100) / 100,

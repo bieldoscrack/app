@@ -46,13 +46,13 @@ interface DetectorParams {
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minMovementPct: 0.02,       // Very low — catch even small BTC ticks (~$14 on $70k)
-  persistenceWindowSec: 3,    // Shorter persistence window
-  persistenceMinPct: 0.01,    // Almost any sustained movement counts
-  maxSpreadBps: 800,          // Allow wider spreads (8 cents) for more opportunities
-  minLiquidityUsd: 10,        // Very low liquidity minimum
-  maxEntryPriceYes: 0.97,     // Very permissive
-  minEntryPriceNo: 0.03,      // Very permissive
+  minMovementPct: 0.03,       // ~$21 BTC move in 10s — filters noise but still catchable
+  persistenceWindowSec: 3,    // 3s persistence window
+  persistenceMinPct: 0.015,   // Movement must persist at least 0.015%
+  maxSpreadBps: 600,          // 6 cent spread max
+  minLiquidityUsd: 20,        // Reasonable minimum
+  maxEntryPriceYes: 0.95,     // Avoid extreme prices
+  minEntryPriceNo: 0.05,      // Avoid extreme prices
 };
 
 export class OpportunityDetector {
