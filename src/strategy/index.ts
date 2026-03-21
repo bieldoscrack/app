@@ -127,8 +127,9 @@ export class StrategyEngine {
     // Skip rejected opportunities
     if (opp.rejected) return;
 
-    // Minimum score threshold
-    const MIN_SCORE = 50;
+    // Minimum score threshold — lowered from 50 to 30
+    // Without persistence (soft factor), movement+spread+liquidity can reach ~35-45
+    const MIN_SCORE = 30;
     if (opp.score < MIN_SCORE) {
       log.debug('Opportunity score too low', { score: opp.score, min: MIN_SCORE });
       return;

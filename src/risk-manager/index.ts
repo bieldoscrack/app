@@ -103,8 +103,8 @@ export class RiskManager {
       };
     }
 
-    // 8. Check minimum liquidity ($50 minimum)
-    const minLiquidity = 50;
+    // 8. Check minimum liquidity ($15 minimum — was $50, too strict for thin Polymarket books)
+    const minLiquidity = 15;
     if (params.liquidityUsd < minLiquidity) {
       return {
         allowed: false,

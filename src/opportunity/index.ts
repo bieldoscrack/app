@@ -46,13 +46,13 @@ interface DetectorParams {
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minMovementPct: 0.15,
+  minMovementPct: 0.07,       // Was 0.15 — too strict, BTC rarely moves that fast in 10s
   persistenceWindowSec: 5,
-  persistenceMinPct: 0.10,
-  maxSpreadBps: 300, // 3 cents
-  minLiquidityUsd: 100,
-  maxEntryPriceYes: 0.92,
-  minEntryPriceNo: 0.08,
+  persistenceMinPct: 0.04,    // Was 0.10 — lowered to match relaxed movement threshold
+  maxSpreadBps: 500,          // Was 300 — allow wider spreads (5 cents) for more opportunities
+  minLiquidityUsd: 25,        // Was 100 — Polymarket books are often thin
+  maxEntryPriceYes: 0.95,     // Was 0.92 — slightly more permissive
+  minEntryPriceNo: 0.05,      // Was 0.08 — slightly more permissive
 };
 
 export class OpportunityDetector {
@@ -61,7 +61,8 @@ export class OpportunityDetector {
   private externalFeed: ExternalPriceFeed;
   private marketData: PolymarketDataClient;
   private lastDetectedAt = 0;
-  private cooldownMs = 5000; // min 5s between detections
+  private cooldownMs = 2000; // min 2s between detections (was 5s — too slow)
+  private lastMovementLogAt = 0; // throttle movement debug logs
 
   constructor(
     config: AppConfig,
@@ -108,7 +109,16 @@ export class OpportunityDetector {
 
     // Filter 1: Minimum movement
     if (absMovement < this.params.minMovementPct) {
-      return null; // Not interesting enough — don't even log
+      // Log every 30s so user can see what movements are happening
+      if (now - this.lastMovementLogAt > 30000) {
+        this.lastMovementLogAt = now;
+        log.debug('Movement below threshold', {
+          movement: `${movementPct.toFixed(4)}%`,
+          threshold: `${this.params.minMovementPct}%`,
+          price: currentPrice,
+        });
+      }
+      return null;
     }
 
     reasons.push(`External move: ${movementPct > 0 ? '+' : ''}${movementPct.toFixed(3)}% in 10s`);
@@ -125,12 +135,11 @@ export class OpportunityDetector {
         persistenceConfirmed = true;
         reasons.push(`Persistence confirmed: ${persistencePct.toFixed(3)}% over ${this.params.persistenceWindowSec}s`);
       } else {
-        rejectionReasons.push(`Persistence failed: ${persistencePct.toFixed(3)}% (need ${this.params.persistenceMinPct}%)`);
-        rejected = true;
+        // Soft factor: persistence failure reduces score but does NOT reject
+        reasons.push(`Persistence not confirmed: ${persistencePct.toFixed(3)}% (wanted ${this.params.persistenceMinPct}%)`);
       }
     } else {
-      rejectionReasons.push('Not enough price history for persistence check');
-      rejected = true;
+      reasons.push('Not enough price history for persistence check (soft skip)');
     }
 
     // --- 3. Determine direction ---
