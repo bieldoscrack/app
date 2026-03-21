@@ -37,12 +37,12 @@ const envSchema = z.object({
 
   // Risk limits
   MAX_STAKE_PER_TRADE: z.coerce.number().positive().default(10),
-  MAX_TRADES_PER_HOUR: z.coerce.number().int().positive().default(12),
+  MAX_TRADES_PER_HOUR: z.coerce.number().int().positive().default(999),
   MAX_DAILY_DRAWDOWN: z.coerce.number().positive().default(50),
-  MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().positive().default(5),
+  MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().positive().default(999),
 
   // Paper trading
-  PAPER_STARTING_BALANCE: z.coerce.number().positive().default(1000),
+  PAPER_STARTING_BALANCE: z.coerce.number().positive().default(50),
 
   // Timing
   WINDOW_DURATION_SECONDS: z.coerce.number().int().positive().default(300),

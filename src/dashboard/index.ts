@@ -48,6 +48,8 @@ export class Dashboard {
 
     // Header
     lines.push(this.colorize('═'.repeat(74), 'cyan'));
+    lines.push(this.colorize('  ★  DEV BIEL  ★', 'cyan'));
+    lines.push(this.colorize('═'.repeat(74), 'cyan'));
     const modeColor = state.mode === 'PAPER' ? 'yellow' : 'red';
     lines.push(
       `  POLYMARKET BOT v2  │  ${this.colorize(state.mode, modeColor)}  │  ` +
@@ -55,7 +57,6 @@ export class Dashboard {
       `Up: ${formatUptime(this.startTimestamp)}  │  ` +
       `${new Date().toISOString().replace('T', ' ').substring(0, 19)}`
     );
-    lines.push(this.colorize('═'.repeat(74), 'cyan'));
 
     // Portfolio
     lines.push('');
@@ -95,8 +96,8 @@ export class Dashboard {
       : this.colorize('OK', 'green');
     lines.push(
       `  Status: ${haltText}  │  ` +
-      `Trades/hr: ${state.risk.tradesThisHour}/${this.config.risk.maxTradesPerHour}  │  ` +
-      `Consec. Losses: ${state.risk.consecutiveLosses}/${this.config.risk.maxConsecutiveLosses}`
+      `Trades/hr: ${state.risk.tradesThisHour}  │  ` +
+      `Consec. Losses: ${state.risk.consecutiveLosses}`
     );
     lines.push(
       `  Daily PnL: ${this.colorize(formatUsd(state.risk.dailyPnl), state.risk.dailyPnl >= 0 ? 'green' : 'red')}  │  ` +
