@@ -157,6 +157,16 @@ export class OpportunityDetector {
   }
 
   /**
+   * Get BTC % move over the last N seconds. Returns null if not enough data.
+   */
+  private getRecentMovePercent(seconds: number): number | null {
+    const now = this.externalFeed.getCurrentPrice();
+    const ago = this.externalFeed.getPriceSecondsAgo(seconds);
+    if (!now || !ago) return null;
+    return ((now - ago) / ago) * 100;
+  }
+
+  /**
    * Anti-chop: count direction changes in last 30s.
    */
   private getChopScore(): number {
@@ -243,6 +253,21 @@ export class OpportunityDetector {
       rejected = true;
     }
 
+    // --- 4b. Mean reversion filter ---
+    // If BTC moved too much too fast, it's likely to revert before settlement
+    const btcMoveAbs = Math.abs(btcReturn) * 100; // in percent
+    const recentMove3s = this.getRecentMovePercent(3);
+    // Reject if: large move that's already decelerating (potential reversal)
+    if (btcMoveAbs > 0.15 && recentMove3s !== null) {
+      const isDecelerating = isUpFavored
+        ? recentMove3s < -0.01  // BTC was up but last 3s it's dropping
+        : recentMove3s > 0.01;  // BTC was down but last 3s it's rising
+      if (isDecelerating) {
+        rejectionReasons.push(`Mean reversion: BTC ${btcMoveAbs.toFixed(2)}% but last 3s ${recentMove3s > 0 ? '+' : ''}${recentMove3s.toFixed(3)}%`);
+        rejected = true;
+      }
+    }
+
     // --- 5. Anti-chop filter ---
     const chopScore = this.getChopScore();
     if (chopScore > this.params.maxChopScore) {
@@ -326,7 +351,7 @@ export class OpportunityDetector {
 
     // --- 11. Stake calculation ---
     const maxStake = this.config.risk.maxStakePerTrade;
-    const suggestedStake = Math.max(2, Math.round(maxStake * (score / 100) * 100) / 100);
+    const suggestedStake = Math.max(1, Math.round(maxStake * (score / 100) * 100) / 100);
 
     // --- 12. BTC movement for logging ---
     const priceNSecsAgo = this.externalFeed.getPriceSecondsAgo(10);
