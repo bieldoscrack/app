@@ -43,11 +43,11 @@ interface DetectorParams {
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minProbabilityEdge: 0.03,   // Need at least 3% edge (relaxed for paper trading)
+  minProbabilityEdge: 0.08,   // Need at least 8% edge (better risk/reward)
   minFairProbability: 0.60,   // Fair prob must be > 60% on our side
   maxSpreadBps: 800,
   minLiquidityUsd: 15,
-  makerPriceDiscount: 0.92,   // Place maker order at 92% of fair prob
+  makerPriceDiscount: 0.88,   // Place maker order at 88% of fair prob (more discount = better R/R)
   maxChopScore: 0.55,
 };
 
@@ -289,8 +289,8 @@ export class OpportunityDetector {
     }
 
     // --- 9. Price bounds check ---
-    if (suggestedEntryPrice > 0.95) {
-      rejectionReasons.push(`Entry price ${suggestedEntryPrice.toFixed(3)} too high`);
+    if (suggestedEntryPrice > 0.85) {
+      rejectionReasons.push(`Entry price ${suggestedEntryPrice.toFixed(3)} > 0.85 (bad R/R)`);
       rejected = true;
     }
     if (suggestedEntryPrice < 0.05) {
