@@ -123,6 +123,7 @@ export class StrategyEngine {
       const btcPrice = this.externalFeed.getCurrentPrice();
       if (btcPrice) {
         this.detector.setWindowContext(btcPrice, window.endTimestamp);
+        this.marketData.setWindowContext(btcPrice, window.endTimestamp);
         log.info('New window started', {
           windowId: window.id,
           referenceBtc: btcPrice,

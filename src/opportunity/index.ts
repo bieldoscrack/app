@@ -342,7 +342,7 @@ export class OpportunityDetector {
 
     // Stake: proportional to score
     const maxStake = this.config.risk.maxStakePerTrade;
-    const suggestedStake = Math.max(1, Math.round(maxStake * (score / 100) * 100) / 100);
+    const suggestedStake = Math.max(2, Math.round(maxStake * (score / 100) * 100) / 100);
 
     const opportunity: Opportunity = {
       timestamp: now,

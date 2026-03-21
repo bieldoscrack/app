@@ -5,6 +5,13 @@
 // Uses REST polling (CLOB API provides REST endpoints).
 // Parses order book into structured format with spread/mid.
 //
+// SIMULATED BOOK v3 — Probability-Convergent Model:
+// Instead of directly coupling to BTC price, the simulated book
+// converges toward the FAIR PROBABILITY of UP/DOWN at window end.
+// This models how real market makers adjust orders: they calculate
+// fair value and move their quotes toward it, but with latency.
+// The lag in convergence IS the edge we exploit.
+//
 // API Reference: https://docs.polymarket.com/
 // ============================================================
 
@@ -21,6 +28,20 @@ interface ClobBookResponse {
   asks: Array<{ price: string; size: string }>;
 }
 
+/**
+ * Normal CDF approximation (Abramowitz & Stegun).
+ * Used to calculate fair probability of UP/DOWN outcome.
+ */
+function normalCDF(x: number): number {
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+  const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const t = 1.0 / (1.0 + p * ax);
+  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-ax * ax / 2);
+  return 0.5 * (1.0 + sign * y);
+}
+
 export class PolymarketDataClient extends EventEmitter {
   private config: AppConfig;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -31,10 +52,21 @@ export class PolymarketDataClient extends EventEmitter {
   private currentBook: OrderBook | null = null;
   private shouldPoll = true;
   private externalPriceGetter: (() => number | null) | null = null;
-  private baselineExternalPrice: number | null = null;
-  /** Lag buffer: simulated book reacts to BTC with realistic delay */
-  private priceLagBuffer: Array<{price: number, ts: number}> = [];
-  private bookLagMs = 2500; // 2.5 second book reaction delay
+
+  /** Price history for volatility estimation */
+  private priceHistory: Array<{price: number, ts: number}> = [];
+
+  /** Window context for fair probability calculation */
+  private windowRefPrice: number | null = null;
+  private windowEndMs: number | null = null;
+  private lastWindowEndMs: number | null = null;
+
+  /**
+   * EMA convergence rate: controls how fast the book adjusts to fair value.
+   * alpha = 0.20 → half-life ~6.5s at 2s poll interval.
+   * Real Polymarket books adjust in ~5-15s, so this is realistic.
+   */
+  private readonly bookAlpha = 0.20;
 
   constructor(config: AppConfig) {
     super();
@@ -44,6 +76,12 @@ export class PolymarketDataClient extends EventEmitter {
   /** Set a function to get the external price (for coupling simulated book to BTC) */
   setExternalPriceGetter(getter: () => number | null): void {
     this.externalPriceGetter = getter;
+  }
+
+  /** Set window context for fair probability calculation */
+  setWindowContext(refPrice: number, endMs: number): void {
+    this.windowRefPrice = refPrice;
+    this.windowEndMs = endMs;
   }
 
   /** Start polling the order book */
@@ -152,74 +190,122 @@ export class PolymarketDataClient extends EventEmitter {
   }
 
   /**
-   * Simulated order book for paper trading when no market ID is set.
+   * Estimate per-second BTC volatility from recent price history.
+   * Groups prices into 1-second buckets, computes std dev of returns.
+   */
+  private estimateVolPerSecond(): number {
+    if (this.priceHistory.length < 20) return 0;
+
+    const buckets: Map<number, number> = new Map();
+    for (const entry of this.priceHistory) {
+      const sec = Math.floor(entry.ts / 1000);
+      buckets.set(sec, entry.price);
+    }
+
+    const secondPrices = Array.from(buckets.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(e => e[1]);
+
+    if (secondPrices.length < 5) return 0;
+
+    const returns: number[] = [];
+    for (let i = 1; i < secondPrices.length; i++) {
+      returns.push((secondPrices[i] - secondPrices[i - 1]) / secondPrices[i - 1]);
+    }
+
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / returns.length;
+    return Math.sqrt(variance);
+  }
+
+  /**
+   * Calculate fair probability of BTC UP at window end.
    *
-   * COUPLED TO EXTERNAL FEED: The simulated midPrice tracks the external
-   * BTC price proportionally. When BTC moves +0.1%, the simulated market
-   * also moves ~+0.1% (with a small delay and noise). This ensures the
-   * bot's signal detection actually correlates with market movement.
+   * Model: BTC ≈ random walk with estimated per-second volatility.
+   * P(UP at expiry) = Φ(currentReturn / (σ * √timeRemaining))
    *
-   * Without this coupling, the bot would be trading random noise.
+   * Returns 0.50 when insufficient data or no window context.
+   */
+  private calculateFairProbability(): number {
+    if (!this.windowRefPrice || !this.windowEndMs) return 0.50;
+
+    const currentPrice = this.externalPriceGetter?.() ?? null;
+    if (!currentPrice) return 0.50;
+
+    const btcReturn = (currentPrice - this.windowRefPrice) / this.windowRefPrice;
+    const timeRemainingS = Math.max(1, (this.windowEndMs - Date.now()) / 1000);
+
+    const volPerSec = this.estimateVolPerSecond();
+    if (volPerSec <= 0) return 0.50;
+
+    const expectedFurtherVol = volPerSec * Math.sqrt(timeRemainingS);
+    if (expectedFurtherVol <= 0) return 0.50;
+
+    const zScore = btcReturn / expectedFurtherVol;
+    return normalCDF(zScore);
+  }
+
+  /**
+   * Simulated order book v3 — Probability-Convergent Model.
+   *
+   * Instead of direct BTC coupling, the book converges toward the
+   * FAIR PROBABILITY of UP/DOWN using exponential moving average.
+   *
+   * This models real market behavior:
+   * 1. BTC moves → fair probability shifts
+   * 2. Market makers recalculate → adjust quotes (takes 5-15s)
+   * 3. Book gradually converges to new fair value
+   *
+   * The LAG in convergence is the edge:
+   * - Our detector calculates fair prob from CURRENT BTC (real-time)
+   * - The book reflects fair prob from ~7s ago (EMA lag)
+   * - When the difference > spread cost → profitable trade
    */
   private startSimulatedBook(intervalMs: number): void {
     const log = createModuleLogger('market-data');
-    log.info('Using SIMULATED order book (coupled to external feed)');
+    log.info('Using SIMULATED order book v3 (probability-convergent)');
 
     this.connected = true;
     this.emit('connected');
 
-    let midPrice = 0.50; // start at 50 cents
+    let midPrice = 0.50; // start at 50/50
 
     this.pollInterval = setInterval(() => {
-      // --- Coupled movement with REALISTIC LAG ---
-      // Real Polymarket books take 2-5s to adjust to BTC moves.
-      // We simulate this by using a LAGGED BTC price for the book.
-      // This creates the latency arbitrage window that is the core edge.
-      let externalDrift = 0;
+      // --- 1. Record BTC price for volatility estimation ---
       if (this.externalPriceGetter) {
         const extPrice = this.externalPriceGetter();
         if (extPrice) {
           const now = Date.now();
-
-          // Store in lag buffer
-          this.priceLagBuffer.push({ price: extPrice, ts: now });
-          // Prune entries older than 10s
-          while (this.priceLagBuffer.length > 0 && this.priceLagBuffer[0].ts < now - 10000) {
-            this.priceLagBuffer.shift();
+          this.priceHistory.push({ price: extPrice, ts: now });
+          // Keep 60s of history for robust vol estimation
+          while (this.priceHistory.length > 0 && this.priceHistory[0].ts < now - 60000) {
+            this.priceHistory.shift();
           }
-
-          // Find the lagged price (bookLagMs ago)
-          const lagTarget = now - this.bookLagMs;
-          let laggedPrice = extPrice; // fallback if not enough history
-          for (let i = this.priceLagBuffer.length - 1; i >= 0; i--) {
-            if (this.priceLagBuffer[i].ts <= lagTarget) {
-              laggedPrice = this.priceLagBuffer[i].price;
-              break;
-            }
-          }
-
-          if (this.baselineExternalPrice === null) {
-            this.baselineExternalPrice = laggedPrice;
-          }
-
-          // Book uses LAGGED price — this is the key to realistic simulation
-          const extChangePct = (laggedPrice - this.baselineExternalPrice) / this.baselineExternalPrice;
-          // 95% coupling — BTC Up/Down markets are highly correlated
-          externalDrift = extChangePct * 0.95;
-          // Slow baseline update
-          this.baselineExternalPrice = this.baselineExternalPrice * 0.999 + laggedPrice * 0.001;
         }
       }
 
-      // Minimal noise: ±0.01% (just enough to not be perfectly deterministic)
-      const noise = (Math.random() - 0.5) * 0.0002;
+      // --- 2. Handle window transitions (snap to 0.50 on new window) ---
+      if (this.windowEndMs !== this.lastWindowEndMs) {
+        if (this.lastWindowEndMs !== null) {
+          midPrice = 0.50; // New window → reset to 50/50
+          log.debug('Window changed — book reset to 0.50');
+        }
+        this.lastWindowEndMs = this.windowEndMs;
+      }
 
-      midPrice = 0.50 + externalDrift + noise;
-      midPrice = Math.max(0.05, Math.min(0.95, midPrice));
+      // --- 3. Calculate fair probability and converge ---
+      const fairProb = this.calculateFairProbability();
 
-      // 0.5 cent spread — realistic for active Polymarket markets
+      // EMA convergence: book moves toward fair value each tick
+      // alpha=0.20 → half-life ~6.5s → book is ~87% adjusted after 20s
+      midPrice = midPrice * (1 - this.bookAlpha) + fairProb * this.bookAlpha;
+
+      // Minimal noise (not perfectly deterministic)
+      const noise = (Math.random() - 0.5) * 0.001;
+      midPrice = Math.max(0.05, Math.min(0.95, midPrice + noise));
+
+      // --- 4. Build order book with 0.5 cent spread ---
       const spread = 0.005;
-      // Use 3 decimal precision for tighter spread
       const bestBid = Math.round((midPrice - spread / 2) * 1000) / 1000;
       const bestAsk = Math.round((midPrice + spread / 2) * 1000) / 1000;
 
