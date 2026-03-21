@@ -43,7 +43,7 @@ interface DetectorParams {
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minProbabilityEdge: 0.05,   // Need at least 5% edge
+  minProbabilityEdge: 0.03,   // Need at least 3% edge (relaxed for paper trading)
   minFairProbability: 0.60,   // Fair prob must be > 60% on our side
   maxSpreadBps: 800,
   minLiquidityUsd: 15,

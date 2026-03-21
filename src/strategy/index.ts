@@ -124,8 +124,8 @@ export class StrategyEngine {
 
     if (opp.rejected) return;
 
-    // Minimum score threshold
-    const MIN_SCORE = 40;
+    // Minimum score threshold (lowered for paper trading to gather more data)
+    const MIN_SCORE = 30;
     if (opp.score < MIN_SCORE) {
       log.debug('Opportunity score too low', { score: opp.score, min: MIN_SCORE });
       return;
