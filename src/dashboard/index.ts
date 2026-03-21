@@ -46,9 +46,14 @@ export class Dashboard {
 
     lines.push('\x1b[2J\x1b[H');
 
-    // Header
+    // Header - DEV BIEL ASCII Art
     lines.push(this.colorize('═'.repeat(74), 'cyan'));
-    lines.push(this.colorize('  ★  DEV BIEL  ★', 'cyan'));
+    lines.push(this.colorize('  ████████╗ ███████╗██╗   ██╗  ██████╗ ██╗███████╗██╗     ', 'green'));
+    lines.push(this.colorize('  ██╔═══██║ ██╔════╝██║   ██║  ██╔══██╗██║██╔════╝██║     ', 'green'));
+    lines.push(this.colorize('  ██║   ██║ █████╗  ██║   ██║  ██████╔╝██║█████╗  ██║     ', 'green'));
+    lines.push(this.colorize('  ██║   ██║ ██╔══╝  ╚██╗ ██╔╝  ██╔══██╗██║██╔══╝  ██║     ', 'green'));
+    lines.push(this.colorize('  ████████║ ███████╗ ╚████╔╝   ██████╔╝██║███████╗███████╗', 'green'));
+    lines.push(this.colorize('  ╚═══════╝ ╚══════╝  ╚═══╝    ╚═════╝ ╚═╝╚══════╝╚══════╝', 'green'));
     lines.push(this.colorize('═'.repeat(74), 'cyan'));
     const modeColor = state.mode === 'PAPER' ? 'yellow' : 'red';
     lines.push(
