@@ -91,6 +91,8 @@ export class StrategyEngine {
     const window = getCurrentWindow(this.config.timing.windowDurationSeconds);
     if (!this.currentWindow || this.currentWindow.id !== window.id) {
       if (this.currentWindow) {
+        // Settle all open trades from the ending window BEFORE transitioning
+        this.settleOpenTrades(this.currentWindow);
         log.info('Window ended', {
           windowId: this.currentWindow.id,
           tradeExecuted: this.currentWindow.tradeExecuted,
@@ -189,10 +191,62 @@ export class StrategyEngine {
   }
 
   /**
+   * Settle all open trades when a window ends.
+   * Called during window transition to ensure trades are closed
+   * before the currentWindow reference changes.
+   */
+  private settleOpenTrades(endedWindow: TradingWindow): void {
+    const log = createModuleLogger('strategy');
+    const openTrades = this.paperEngine.getOpenTrades();
+
+    for (const trade of openTrades) {
+      // Determine settlement: BTC up or down vs reference
+      const prob = this.detector.calculateFairProbability();
+      const book = this.marketData.getCurrentBook();
+
+      let settlementPrice: number;
+      if (prob) {
+        const btcUp = prob.btcReturn >= 0;
+        if (trade.outcome === MarketOutcome.YES) {
+          settlementPrice = btcUp ? 1.00 : 0.00;
+        } else {
+          settlementPrice = btcUp ? 0.00 : 1.00;
+        }
+      } else if (book) {
+        settlementPrice = trade.outcome === MarketOutcome.YES
+          ? book.bestBid
+          : (1 - book.bestAsk);
+      } else {
+        // No data available, settle at entry (no PnL)
+        settlementPrice = trade.entryPrice;
+      }
+
+      const exitReason: ExitReason = {
+        type: 'window_end',
+        summary: `Window settled: ${settlementPrice >= 0.5 ? 'WIN' : 'LOSS'} @ ${settlementPrice.toFixed(2)}`,
+      };
+
+      const closed = this.paperEngine.closeTrade(trade.id, settlementPrice, exitReason);
+      if (closed && closed.pnl !== null) {
+        this.riskManager.recordTradeClosed(closed.pnl);
+        log.info('TRADE SETTLED', {
+          tradeId: closed.id,
+          outcome: closed.outcome,
+          entryPrice: closed.entryPrice,
+          settlementPrice,
+          pnl: closed.pnl,
+          feePaid: closed.feePaid,
+          windowId: endedWindow.id,
+        });
+      }
+    }
+  }
+
+  /**
    * Check exit conditions for open trades.
    *
    * v2 exit strategy:
-   * 1. Window end → simulate settlement (price = 1.00 or 0.00)
+   * 1. Window end settlement is now handled by settleOpenTrades() during window transition
    * 2. Strong momentum reversal → early cut
    * 3. Stop loss → if price drops significantly
    */
@@ -206,47 +260,6 @@ export class StrategyEngine {
     for (const trade of openTrades) {
       const book = this.marketData.getCurrentBook();
       if (!book) continue;
-
-      // Check if window has ended
-      if (this.currentWindow && now >= this.currentWindow.endTimestamp) {
-        // Settlement: determine if BTC is UP or DOWN vs reference
-        const prob = this.detector.calculateFairProbability();
-
-        let settlementPrice: number;
-        if (prob && prob.timeRemainingS <= 1) {
-          // Window expired: simulate binary settlement
-          const btcUp = prob.btcReturn >= 0;
-          if (trade.outcome === MarketOutcome.YES) {
-            settlementPrice = btcUp ? 1.00 : 0.00;
-          } else {
-            settlementPrice = btcUp ? 0.00 : 1.00;
-          }
-        } else {
-          // Window ended but can't determine settlement, use current book
-          settlementPrice = trade.outcome === MarketOutcome.YES
-            ? book.bestBid
-            : (1 - book.bestAsk);
-        }
-
-        const exitReason: ExitReason = {
-          type: 'window_end',
-          summary: `Window settled: ${settlementPrice >= 0.5 ? 'WIN' : 'LOSS'} @ ${settlementPrice.toFixed(2)}`,
-        };
-
-        const closed = this.paperEngine.closeTrade(trade.id, settlementPrice, exitReason);
-        if (closed && closed.pnl !== null) {
-          this.riskManager.recordTradeClosed(closed.pnl);
-          log.info('TRADE SETTLED', {
-            tradeId: closed.id,
-            outcome: closed.outcome,
-            entryPrice: closed.entryPrice,
-            settlementPrice,
-            pnl: closed.pnl,
-            feePaid: closed.feePaid,
-          });
-        }
-        continue;
-      }
 
       // --- Early exit: momentum reversal while in loss ---
       const holdTime = (now - trade.entryTimestamp) / 1000;
