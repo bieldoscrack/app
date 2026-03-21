@@ -1,20 +1,18 @@
 // ============================================================
-// Opportunity Detector v3 — Probability-Based Edge
+// Opportunity Detector v4 — Last-Second Maker Edge
 //
-// Core insight: BTC Up/Down 5min markets resolve based on
-// whether BTC is UP or DOWN at the end of a 5-minute window.
-// The REAL edge is calculating the fair probability of UP/DOWN
-// and comparing it to the current book price.
+// Strategy shift (2026 meta):
+// - Wait until T-15s to T-3s before window end
+// - At that point, ~85% of BTC direction is determined
+// - Calculate fair probability using random walk model
+// - Place MAKER limit order at 0.85-0.95 on the winning side
+// - Zero taker fees + maker rebates = pure edge
 //
-// When fair_prob(UP) = 70% but book prices YES at 55%,
-// there's a 15% edge. THAT is a real trade.
-//
-// The old momentum approach was wrong — tiny BTC moves (0.03%)
-// don't overcome spread costs. Probability-based entry only
-// trades when the edge is mathematically clear.
-//
-// Filters: probability edge > spread cost + minimum threshold,
-// momentum confirmation, anti-chop, acceleration.
+// The edge:
+// 1. Chainlink oracle updates every 10-30s (lag vs Binance)
+// 2. Polymarket book lags behind fair probability
+// 3. Late in the window, uncertainty is LOW = high conviction
+// 4. Maker order = no fees, reduces effective spread to 0
 // ============================================================
 
 import { createModuleLogger } from '../logger';
@@ -24,40 +22,37 @@ import {
   Opportunity,
   MarketOutcome,
   TradeSide,
+  OrderType,
   AppConfig,
 } from '../types';
 
 /** Tunable thresholds */
 interface DetectorParams {
-  /** Minimum external price movement to consider (%) */
-  minMovementPct: number;
-  /** Minimum % movement that must persist (3s) */
-  persistenceMinPct: number;
+  /** Minimum probability edge to trade (fraction, e.g. 0.05 = 5%) */
+  minProbabilityEdge: number;
+  /** Minimum fair probability to consider a side (e.g. 0.60 = 60%) */
+  minFairProbability: number;
   /** Maximum spread in basis points */
   maxSpreadBps: number;
   /** Minimum liquidity within 3 cents of mid (USDC) */
   minLiquidityUsd: number;
-  /** Max entry price for YES */
-  maxEntryPriceYes: number;
-  /** Min entry price for NO */
-  minEntryPriceNo: number;
-  /** Minimum probability edge after spread cost to trade (fraction, e.g. 0.03 = 3%) */
-  minEdgeAfterCost: number;
+  /** Maker limit price: place order at this fraction of fair prob */
+  makerPriceDiscount: number;
+  /** Max chop score (0-1, lower = less choppy = better) */
+  maxChopScore: number;
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minMovementPct: 0.03,
-  persistenceMinPct: 0.015,
-  maxSpreadBps: 600,
-  minLiquidityUsd: 20,
-  maxEntryPriceYes: 0.95,
-  minEntryPriceNo: 0.05,
-  minEdgeAfterCost: 0.03, // Need at least 3% edge after spread costs
+  minProbabilityEdge: 0.05,   // Need at least 5% edge
+  minFairProbability: 0.60,   // Fair prob must be > 60% on our side
+  maxSpreadBps: 800,
+  minLiquidityUsd: 15,
+  makerPriceDiscount: 0.92,   // Place maker order at 92% of fair prob
+  maxChopScore: 0.55,
 };
 
 /**
  * Normal CDF approximation (Abramowitz & Stegun).
- * Accurate to ~1.5e-7. Good enough for trading.
  */
 function normalCDF(x: number): number {
   const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
@@ -75,8 +70,7 @@ export class OpportunityDetector {
   private externalFeed: ExternalPriceFeed;
   private marketData: PolymarketDataClient;
   private lastDetectedAt = 0;
-  private cooldownMs = 3000; // 3s cooldown — we're more selective now
-  private lastMovementLogAt = 0;
+  private cooldownMs = 2000;
 
   /** Window context for probability calculation */
   private windowRefPrice: number | null = null;
@@ -102,13 +96,11 @@ export class OpportunityDetector {
 
   /**
    * Estimate per-second volatility from recent price data.
-   * Groups prices into 1-second buckets, calculates return std dev.
    */
   private estimateVolPerSecond(): number {
     const prices = this.externalFeed.getRecentPrices(30);
     if (prices.length < 20) return 0;
 
-    // Group by second, take last price of each second
     const buckets: Map<number, number> = new Map();
     for (const entry of prices) {
       const sec = Math.floor(entry.timestamp / 1000);
@@ -121,7 +113,6 @@ export class OpportunityDetector {
 
     if (secondPrices.length < 5) return 0;
 
-    // Per-second returns
     const returns: number[] = [];
     for (let i = 1; i < secondPrices.length; i++) {
       returns.push((secondPrices[i] - secondPrices[i - 1]) / secondPrices[i - 1]);
@@ -134,12 +125,17 @@ export class OpportunityDetector {
 
   /**
    * Calculate the FAIR probability that BTC will be UP at window end.
-   * Uses the current BTC position vs reference and remaining time.
-   *
-   * Model: BTC follows random walk with estimated volatility.
    * P(UP at expiry) = Φ(currentReturn / (σ * √timeRemaining))
+   *
+   * Late in the window with a strong move → very high conviction.
    */
-  private calculateFairProbability(): { fairProbUp: number; zScore: number; volPerSec: number } | null {
+  calculateFairProbability(): {
+    fairProbUp: number;
+    zScore: number;
+    volPerSec: number;
+    timeRemainingS: number;
+    btcReturn: number;
+  } | null {
     if (!this.windowRefPrice || !this.windowEndMs) return null;
 
     const currentPrice = this.externalFeed.getCurrentPrice();
@@ -157,12 +153,11 @@ export class OpportunityDetector {
     const zScore = btcReturn / expectedFurtherVol;
     const fairProbUp = normalCDF(zScore);
 
-    return { fairProbUp, zScore, volPerSec };
+    return { fairProbUp, zScore, volPerSec, timeRemainingS, btcReturn };
   }
 
   /**
    * Anti-chop: count direction changes in last 30s.
-   * High chop = trending is unreliable.
    */
   private getChopScore(): number {
     const prices = this.externalFeed.getRecentPrices(30);
@@ -182,83 +177,88 @@ export class OpportunityDetector {
     return directionChanges / Math.max(1, prices.length - 1);
   }
 
+  /**
+   * Evaluate for last-second maker opportunity.
+   *
+   * Only fires during the entry window (T-15s to T-3s by default).
+   * Calculates fair probability and places maker order if edge is sufficient.
+   */
   evaluate(): Opportunity | null {
     const log = createModuleLogger('opportunity');
     const now = Date.now();
 
     if (now - this.lastDetectedAt < this.cooldownMs) return null;
 
+    // --- 1. Check timing: are we in the entry window? ---
+    if (!this.windowEndMs) return null;
+    const timeRemainingS = (this.windowEndMs - now) / 1000;
+
+    const entryStart = this.config.timing.entryWindowStartS;
+    const entryEnd = this.config.timing.entryWindowEndS;
+
+    if (timeRemainingS > entryStart || timeRemainingS < entryEnd) {
+      return null; // Not in entry window yet, or too late
+    }
+
     const currentPrice = this.externalFeed.getCurrentPrice();
     const book = this.marketData.getCurrentBook();
     if (!currentPrice || !book) return null;
-
-    // --- 1. Basic movement check (gate) ---
-    const priceNSecsAgo = this.externalFeed.getPriceSecondsAgo(10);
-    if (!priceNSecsAgo) return null;
-
-    const movementPct = ((currentPrice - priceNSecsAgo) / priceNSecsAgo) * 100;
-    const absMovement = Math.abs(movementPct);
-
-    if (absMovement < this.params.minMovementPct) {
-      if (now - this.lastMovementLogAt > 30000) {
-        this.lastMovementLogAt = now;
-        log.debug('Movement below threshold', {
-          movement: `${movementPct.toFixed(4)}%`,
-          threshold: `${this.params.minMovementPct}%`,
-        });
-      }
-      return null;
-    }
 
     const reasons: string[] = [];
     const rejectionReasons: string[] = [];
     let rejected = false;
 
-    reasons.push(`Move: ${movementPct > 0 ? '+' : ''}${movementPct.toFixed(3)}% 10s`);
+    // --- 2. Calculate fair probability ---
+    const prob = this.calculateFairProbability();
+    if (!prob) return null;
 
-    // --- 2. Anti-chop filter ---
+    const { fairProbUp, zScore, timeRemainingS: tRemain, btcReturn } = prob;
+
+    // Determine which side has the edge
+    const fairProbDown = 1 - fairProbUp;
+    const isUpFavored = fairProbUp >= fairProbDown;
+    const fairProb = isUpFavored ? fairProbUp : fairProbDown;
+    const outcome = isUpFavored ? MarketOutcome.YES : MarketOutcome.NO;
+
+    reasons.push(`T-${tRemain.toFixed(0)}s | BTC: ${(btcReturn * 100).toFixed(3)}%`);
+    reasons.push(`Fair: ${(fairProbUp * 100).toFixed(1)}% UP | z: ${zScore.toFixed(2)}`);
+
+    // --- 3. Check minimum probability threshold ---
+    if (fairProb < this.params.minFairProbability) {
+      rejectionReasons.push(`Fair prob ${(fairProb * 100).toFixed(1)}% < ${(this.params.minFairProbability * 100).toFixed(0)}% min`);
+      rejected = true;
+    }
+
+    // --- 4. Calculate edge vs book ---
+    // Book price for our side
+    const bookPrice = outcome === MarketOutcome.YES
+      ? book.bestAsk  // cost to buy YES as taker
+      : (1 - book.bestBid);  // cost to buy NO as taker
+
+    const probabilityEdge = fairProb - bookPrice;
+    reasons.push(`Edge: ${(probabilityEdge * 100).toFixed(1)}% (fair ${(fairProb * 100).toFixed(1)}% vs book ${(bookPrice * 100).toFixed(1)}%)`);
+
+    if (probabilityEdge < this.params.minProbabilityEdge) {
+      rejectionReasons.push(`Edge ${(probabilityEdge * 100).toFixed(1)}% < ${(this.params.minProbabilityEdge * 100).toFixed(0)}% min`);
+      rejected = true;
+    }
+
+    // --- 5. Anti-chop filter ---
     const chopScore = this.getChopScore();
-    if (chopScore > 0.6) return null;
+    if (chopScore > this.params.maxChopScore) {
+      rejectionReasons.push(`Chop: ${(chopScore * 100).toFixed(0)}% > ${(this.params.maxChopScore * 100).toFixed(0)}%`);
+      rejected = true;
+    }
     reasons.push(`Chop: ${(chopScore * 100).toFixed(0)}%`);
 
-    // --- 3. Momentum confirmation (2/3 timeframes) ---
-    const price3sAgo = this.externalFeed.getPriceSecondsAgo(3);
-    const price20sAgo = this.externalFeed.getPriceSecondsAgo(20);
-    let momentumScore = 1; // 10s already passed
-    let persistenceConfirmed = false;
-
-    if (price3sAgo) {
-      const move3s = ((currentPrice - price3sAgo) / price3sAgo) * 100;
-      if (Math.sign(move3s) === Math.sign(movementPct) && Math.abs(move3s) >= this.params.persistenceMinPct) {
-        momentumScore++;
-        persistenceConfirmed = true;
-      }
-    }
-    if (price20sAgo) {
-      const move20s = ((currentPrice - price20sAgo) / price20sAgo) * 100;
-      if (Math.sign(move20s) === Math.sign(movementPct) && Math.abs(move20s) >= this.params.minMovementPct) {
-        momentumScore++;
-      }
-    }
-
-    if (momentumScore < 2) return null;
-    reasons.push(`Mom: ${momentumScore}/3`);
-
-    // --- 4. Determine direction ---
-    const outcome = movementPct > 0 ? MarketOutcome.YES : MarketOutcome.NO;
-    const side = TradeSide.BUY;
-    const suggestedEntryPrice = outcome === MarketOutcome.YES
-      ? book.bestAsk
-      : (1 - book.bestBid);
-
-    // --- 5. Spread filter ---
+    // --- 6. Spread filter ---
     const spreadBps = book.spread * 10000;
     if (spreadBps > this.params.maxSpreadBps) {
       rejectionReasons.push(`Spread: ${spreadBps.toFixed(0)}bps > ${this.params.maxSpreadBps}`);
       rejected = true;
     }
 
-    // --- 6. Liquidity filter ---
+    // --- 7. Liquidity filter ---
     const liquidity = this.marketData.getLiquidityWithinCents(3);
     const relevantLiquidity = outcome === MarketOutcome.YES
       ? liquidity.askLiquidity : liquidity.bidLiquidity;
@@ -268,94 +268,88 @@ export class OpportunityDetector {
       rejected = true;
     }
 
-    // --- 7. Entry price filter ---
-    if (outcome === MarketOutcome.YES && suggestedEntryPrice > this.params.maxEntryPriceYes) {
-      rejectionReasons.push(`YES price ${suggestedEntryPrice.toFixed(3)} > ${this.params.maxEntryPriceYes}`);
-      rejected = true;
-    }
-    if (outcome === MarketOutcome.NO && suggestedEntryPrice < this.params.minEntryPriceNo) {
-      rejectionReasons.push(`NO price ${suggestedEntryPrice.toFixed(3)} < ${this.params.minEntryPriceNo}`);
-      rejected = true;
-    }
+    // --- 8. Determine order type and entry price ---
+    const orderType = this.config.fees.preferMaker ? OrderType.MAKER : OrderType.TAKER;
+    let suggestedEntryPrice: number;
 
-    // --- 8. PROBABILITY-BASED EDGE (the core edge) ---
-    const prob = this.calculateFairProbability();
-    let probabilityEdge = 0;
-    let fairProbDisplay = 'N/A';
-
-    if (prob) {
-      const { fairProbUp, zScore } = prob;
-      fairProbDisplay = `${(fairProbUp * 100).toFixed(1)}%`;
-
-      // Calculate edge: difference between fair probability and book price
-      if (outcome === MarketOutcome.YES) {
-        // We're buying YES — edge = fairProbUp - what we pay
-        probabilityEdge = fairProbUp - suggestedEntryPrice;
-      } else {
-        // We're buying NO — edge = fairProbDown - what we pay
-        probabilityEdge = (1 - fairProbUp) - suggestedEntryPrice;
-      }
-
-      // Spread cost as fraction of entry
-      const spreadCostFraction = book.spread * 0.75; // approximate round-trip cost
-
-      const netEdge = probabilityEdge - spreadCostFraction;
-
-      reasons.push(`Fair: ${fairProbDisplay} | z: ${zScore.toFixed(2)} | Edge: ${(probabilityEdge * 100).toFixed(1)}% | Net: ${(netEdge * 100).toFixed(1)}%`);
-
-      // Reject if insufficient edge after costs
-      if (netEdge < this.params.minEdgeAfterCost) {
-        rejectionReasons.push(`Edge too small: ${(netEdge * 100).toFixed(1)}% < ${(this.params.minEdgeAfterCost * 100).toFixed(0)}%`);
-        rejected = true;
-      }
+    if (orderType === OrderType.MAKER) {
+      // Maker: place limit order at a discount to fair value
+      // e.g., fair = 80%, we bid at 80% * 0.92 = 73.6 cents
+      // This gives us better fill price and 0 fees + rebates
+      suggestedEntryPrice = Math.round(fairProb * this.params.makerPriceDiscount * 1000) / 1000;
+      // Clamp to reasonable range
+      suggestedEntryPrice = Math.max(0.05, Math.min(0.95, suggestedEntryPrice));
+      reasons.push(`Maker @ ${suggestedEntryPrice.toFixed(3)} (${((1 - this.params.makerPriceDiscount) * 100).toFixed(0)}% discount)`);
     } else {
-      // No probability data — still allow momentum-based trades but penalize score
-      reasons.push('No prob data (momentum only)');
+      // Taker: buy at best ask
+      suggestedEntryPrice = outcome === MarketOutcome.YES
+        ? book.bestAsk
+        : (1 - book.bestBid);
+      reasons.push(`Taker @ ${suggestedEntryPrice.toFixed(3)}`);
     }
 
-    // --- 9. SCORING (0-100) ---
+    // --- 9. Price bounds check ---
+    if (suggestedEntryPrice > 0.95) {
+      rejectionReasons.push(`Entry price ${suggestedEntryPrice.toFixed(3)} too high`);
+      rejected = true;
+    }
+    if (suggestedEntryPrice < 0.05) {
+      rejectionReasons.push(`Entry price ${suggestedEntryPrice.toFixed(3)} too low`);
+      rejected = true;
+    }
+
+    // --- 10. SCORING (0-100) ---
     let score = 0;
 
-    // Probability edge: 0-40 points (dominant factor)
-    if (probabilityEdge > 0) {
-      score += Math.min(40, probabilityEdge * 100 * 4); // 10% edge = 40pts
-    }
+    // Probability conviction: 0-35 points (how sure is the direction)
+    // fairProb of 0.90 → 30pts, 0.70 → 15pts, 0.60 → 7.5pts
+    score += Math.min(35, (fairProb - 0.50) * 75);
 
-    // Movement strength: 0-15 points
-    const volAdjustedMove = absMovement / Math.max(0.03, this.params.minMovementPct);
-    score += Math.min(15, (volAdjustedMove - 1) * 10 + 5);
+    // Probability edge vs book: 0-25 points
+    score += Math.min(25, Math.max(0, probabilityEdge * 100 * 2.5));
 
-    // Momentum: 2/3 = 8pts, 3/3 = 15pts
-    score += momentumScore === 3 ? 15 : 8;
+    // Time position: 0-15 points (later in window = more certain)
+    // T-3s = 15pts, T-10s = 5pts, T-15s = 0pts
+    const timeScore = Math.max(0, 15 * (1 - (tRemain - entryEnd) / (entryStart - entryEnd)));
+    score += timeScore;
 
     // Chop quality: 0-10 (lower chop = better)
-    score += Math.max(0, 10 * (1 - chopScore / 0.6));
+    score += Math.max(0, 10 * (1 - chopScore / this.params.maxChopScore));
 
-    // Spread quality: 0-10
-    score += Math.max(0, 10 * (1 - spreadBps / this.params.maxSpreadBps));
+    // Spread quality: 0-8
+    score += Math.max(0, 8 * (1 - spreadBps / this.params.maxSpreadBps));
 
-    // Price position: 0-10 (closer to 0.50 = better)
-    const priceDistance = Math.abs(suggestedEntryPrice - 0.5);
-    score += Math.max(0, 10 * (1 - priceDistance / 0.5));
+    // Z-score strength: 0-7 (how strong is the statistical signal)
+    score += Math.min(7, Math.abs(zScore) * 2);
 
     score = Math.round(Math.min(100, Math.max(0, score)));
 
-    // Stake: proportional to score
+    // --- 11. Stake calculation ---
     const maxStake = this.config.risk.maxStakePerTrade;
     const suggestedStake = Math.max(2, Math.round(maxStake * (score / 100) * 100) / 100);
+
+    // --- 12. BTC movement for logging ---
+    const priceNSecsAgo = this.externalFeed.getPriceSecondsAgo(10);
+    const movementPct = priceNSecsAgo
+      ? ((currentPrice - priceNSecsAgo) / priceNSecsAgo) * 100
+      : 0;
 
     const opportunity: Opportunity = {
       timestamp: now,
       marketId: this.config.polymarket.marketId || 'simulated',
       outcome,
-      side,
+      side: TradeSide.BUY,
+      orderType,
       score,
       externalMovementPct: movementPct,
-      persistenceConfirmed,
+      persistenceConfirmed: Math.abs(zScore) > 1.0,
       spreadBps,
       liquidityUsd: relevantLiquidity,
       suggestedStake,
       suggestedEntryPrice,
+      fairProbability: fairProb,
+      probabilityEdge,
+      timeRemainingS: tRemain,
       reasons,
       rejected,
       rejectionReasons,
@@ -366,19 +360,21 @@ export class OpportunityDetector {
     if (rejected) {
       log.debug('Opportunity REJECTED', {
         score,
-        movement: movementPct.toFixed(3),
-        fairProb: fairProbDisplay,
+        outcome,
+        fairProb: `${(fairProb * 100).toFixed(1)}%`,
         edge: `${(probabilityEdge * 100).toFixed(1)}%`,
+        timeRemaining: `${tRemain.toFixed(0)}s`,
         rejections: rejectionReasons,
       });
     } else {
-      log.info('Opportunity DETECTED', {
+      log.info('OPPORTUNITY DETECTED', {
         score,
         outcome,
-        movement: movementPct.toFixed(3),
-        fairProb: fairProbDisplay,
+        fairProb: `${(fairProb * 100).toFixed(1)}%`,
         edge: `${(probabilityEdge * 100).toFixed(1)}%`,
-        spread: spreadBps.toFixed(0),
+        entryPrice: suggestedEntryPrice,
+        orderType,
+        timeRemaining: `${tRemain.toFixed(0)}s`,
       });
     }
 

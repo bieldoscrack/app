@@ -1,10 +1,15 @@
 // ============================================================
-// Paper Trading Engine
-// Simulates trade execution without touching real markets.
-// Tracks positions, PnL, and provides realistic-ish fills.
+// Paper Trading Engine v2
+//
+// Fixed for binary market PnL:
+// - shares = stake / entryPrice
+// - PnL = (shares * exitPrice) - stake - fees
+//
+// Now tracks: shares, fees, order type (maker/taker)
 // ============================================================
 
 import { createModuleLogger } from '../logger';
+import { calculateFeeUsd } from '../fees';
 import {
   AppConfig,
   Trade,
@@ -12,6 +17,7 @@ import {
   TradeStatus,
   MarketOutcome,
   TradingMode,
+  OrderType,
   EntryReason,
   ExitReason,
   PortfolioState,
@@ -23,23 +29,29 @@ function getLog(): winston.Logger {
 }
 
 export class PaperTradingEngine {
+  private config: AppConfig;
   private balance: number;
   private startingBalance: number;
   private openTrades: Map<string, Trade> = new Map();
   private closedTrades: Trade[] = [];
   private tradeCounter = 0;
+  private totalFeesPaid = 0;
 
   constructor(config: AppConfig) {
+    this.config = config;
     this.startingBalance = config.paper.startingBalance;
     this.balance = this.startingBalance;
     getLog().info('Paper trading engine initialized', {
       startingBalance: this.balance,
+      marketType: config.fees.marketType,
+      preferMaker: config.fees.preferMaker,
     });
   }
 
   /**
-   * Simulate opening a trade. Deducts stake from balance.
-   * Returns the trade record or null if insufficient balance.
+   * Simulate opening a trade.
+   * Binary market: shares = stake / price
+   * Maker orders: 0 fee. Taker orders: dynamic fee.
    */
   openTrade(params: {
     marketId: string;
@@ -48,18 +60,33 @@ export class PaperTradingEngine {
     price: number;
     stake: number;
     windowId: string;
+    orderType: OrderType;
     reason: EntryReason;
   }): Trade | null {
-    if (params.stake > this.balance) {
+    // Calculate fee on entry
+    const entryFee = calculateFeeUsd(
+      params.stake,
+      params.price,
+      this.config.fees.marketType,
+      params.orderType
+    );
+
+    const totalCost = params.stake + entryFee;
+
+    if (totalCost > this.balance) {
       getLog().warn('Insufficient paper balance for trade', {
-        requested: params.stake,
+        requested: totalCost,
         available: this.balance,
+        fee: entryFee,
       });
       return null;
     }
 
     this.tradeCounter++;
     const id = `paper-${Date.now()}-${this.tradeCounter}`;
+
+    // Binary market: shares = stake / price
+    const shares = params.stake / params.price;
 
     const trade: Trade = {
       id,
@@ -68,35 +95,46 @@ export class PaperTradingEngine {
       side: params.side,
       status: TradeStatus.OPEN,
       mode: TradingMode.PAPER,
+      orderType: params.orderType,
       entryPrice: params.price,
       entryTimestamp: Date.now(),
       entryReason: params.reason,
       stake: params.stake,
+      shares,
       exitPrice: null,
       exitTimestamp: null,
       exitReason: null,
       pnl: null,
+      feePaid: entryFee,
       windowId: params.windowId,
     };
 
-    this.balance -= params.stake;
+    this.balance -= totalCost;
+    this.totalFeesPaid += entryFee;
     this.openTrades.set(id, trade);
 
     getLog().info('Paper trade OPENED', {
       id: trade.id,
       outcome: trade.outcome,
       side: trade.side,
+      orderType: trade.orderType,
       price: trade.entryPrice,
       stake: trade.stake,
+      shares: trade.shares.toFixed(2),
+      fee: entryFee,
       balance: this.balance,
-      reason: trade.entryReason.summary,
     });
 
     return trade;
   }
 
   /**
-   * Simulate closing a trade. Credits balance with result.
+   * Simulate closing a trade.
+   *
+   * Binary market PnL (correct formula):
+   * - BUY: PnL = (shares * exitPrice) - stake
+   * - At settlement: exitPrice = 1.00 (win) or 0.00 (lose)
+   * - Mid-trade: exitPrice = current book price
    */
   closeTrade(tradeId: string, exitPrice: number, reason: ExitReason): Trade | null {
     const trade = this.openTrades.get(tradeId);
@@ -105,25 +143,33 @@ export class PaperTradingEngine {
       return null;
     }
 
-    // PnL calculation for binary markets:
-    // BUY at entryPrice, exit at exitPrice
-    // PnL = stake * (exitPrice - entryPrice) / entryPrice
-    // Simplified: if you bought YES at 0.60 and it goes to 0.70,
-    // you gain proportionally on your stake.
-    const priceDelta = exitPrice - trade.entryPrice;
-    const pnl = trade.side === TradeSide.BUY
-      ? trade.stake * (priceDelta / trade.entryPrice)
-      : trade.stake * (-priceDelta / trade.entryPrice);
+    // Calculate exit fee (only for taker exits)
+    const exitOrderType = this.config.fees.preferMaker ? OrderType.MAKER : OrderType.TAKER;
+    const exitFee = calculateFeeUsd(
+      trade.shares * exitPrice, // value at exit
+      exitPrice,
+      this.config.fees.marketType,
+      exitOrderType
+    );
+
+    // Binary market PnL:
+    // Revenue = shares * exitPrice
+    // Cost = stake (already deducted) + entry fee (already deducted) + exit fee
+    // PnL = revenue - stake - exit fee
+    const revenue = trade.shares * exitPrice;
+    const pnl = revenue - trade.stake - exitFee;
 
     trade.exitPrice = exitPrice;
     trade.exitTimestamp = Date.now();
     trade.exitReason = reason;
-    trade.pnl = Math.round(pnl * 100) / 100; // round to cents
+    trade.pnl = Math.round(pnl * 100) / 100;
+    trade.feePaid += exitFee;
     trade.status = TradeStatus.CLOSED;
 
-    // Return stake + pnl to balance
-    this.balance += trade.stake + trade.pnl;
+    // Return revenue minus exit fee to balance
+    this.balance += revenue - exitFee;
     this.balance = Math.round(this.balance * 100) / 100;
+    this.totalFeesPaid += exitFee;
 
     this.openTrades.delete(tradeId);
     this.closedTrades.push(trade);
@@ -132,7 +178,9 @@ export class PaperTradingEngine {
       id: trade.id,
       entryPrice: trade.entryPrice,
       exitPrice: trade.exitPrice,
+      shares: trade.shares.toFixed(2),
       pnl: trade.pnl,
+      totalFee: trade.feePaid,
       reason: reason.summary,
       balance: this.balance,
     });
@@ -155,6 +203,7 @@ export class PaperTradingEngine {
       winCount: wins.length,
       lossCount: losses.length,
       totalTrades: this.closedTrades.length,
+      totalFeesPaid: Math.round(this.totalFeesPaid * 100) / 100,
     };
   }
 

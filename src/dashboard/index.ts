@@ -1,21 +1,18 @@
 // ============================================================
-// Terminal Dashboard
+// Terminal Dashboard v2
 //
-// Renders a live-updating terminal UI with:
-// - Portfolio summary (balance, PnL, win rate)
-// - Risk state (trades/hr, drawdown, halt status)
-// - Connection status (feeds, latency)
-// - Current window and last opportunity
-// - Recent trade history
-//
-// Uses plain ANSI escape codes — no external UI libraries.
+// Updated for last-second maker strategy:
+// - Shows entry window countdown
+// - Shows fair probability and edge
+// - Shows fees paid and order type
+// - Shows settlement results
 // ============================================================
 
 import { createModuleLogger } from '../logger';
 import { MetricsCollector } from '../metrics';
 import { ExternalPriceFeed } from '../external-feed';
 import { AppConfig, TradeStatus } from '../types';
-import { formatUsd, formatPct, formatUptime } from '../utils';
+import { formatUsd, formatUptime } from '../utils';
 
 export class Dashboard {
   private config: AppConfig;
@@ -31,7 +28,6 @@ export class Dashboard {
     this.startTimestamp = Date.now();
   }
 
-  /** Start rendering the dashboard */
   start(): void {
     const log = createModuleLogger('dashboard');
     log.info('Dashboard starting', { refreshMs: this.config.dashboard.refreshMs });
@@ -40,7 +36,6 @@ export class Dashboard {
       this.render();
     }, this.config.dashboard.refreshMs);
 
-    // Initial render
     this.render();
   }
 
@@ -49,18 +44,18 @@ export class Dashboard {
     const extPrice = this.externalFeed.getCurrentPrice();
     const lines: string[] = [];
 
-    // Clear screen
     lines.push('\x1b[2J\x1b[H');
 
     // Header
-    lines.push(this.colorize('═'.repeat(70), 'cyan'));
+    lines.push(this.colorize('═'.repeat(74), 'cyan'));
     const modeColor = state.mode === 'PAPER' ? 'yellow' : 'red';
     lines.push(
-      `  POLYMARKET BOT  │  Mode: ${this.colorize(state.mode, modeColor)}  │  ` +
-      `Uptime: ${formatUptime(this.startTimestamp)}  │  ` +
+      `  POLYMARKET BOT v2  │  ${this.colorize(state.mode, modeColor)}  │  ` +
+      `${this.config.fees.marketType} ${this.config.fees.preferMaker ? 'MAKER' : 'TAKER'}  │  ` +
+      `Up: ${formatUptime(this.startTimestamp)}  │  ` +
       `${new Date().toISOString().replace('T', ' ').substring(0, 19)}`
     );
-    lines.push(this.colorize('═'.repeat(70), 'cyan'));
+    lines.push(this.colorize('═'.repeat(74), 'cyan'));
 
     // Portfolio
     lines.push('');
@@ -70,7 +65,8 @@ export class Dashboard {
     lines.push(
       `  Balance: ${this.colorize(formatUsd(state.portfolio.balance), balColor)}  │  ` +
       `Starting: ${formatUsd(state.portfolio.startingBalance)}  │  ` +
-      `PnL: ${this.colorize(formatUsd(state.portfolio.totalPnl), pnlColor)}`
+      `PnL: ${this.colorize(formatUsd(state.portfolio.totalPnl), pnlColor)}  │  ` +
+      `Fees: ${this.colorize(formatUsd(state.portfolio.totalFeesPaid), 'yellow')}`
     );
 
     const winRate = state.portfolio.totalTrades > 0
@@ -126,7 +122,7 @@ export class Dashboard {
       );
     }
 
-    // Current Window
+    // Current Window with Entry Window Countdown
     lines.push('');
     lines.push(this.colorize('  WINDOW', 'white_bold'));
     if (state.currentWindow) {
@@ -134,16 +130,32 @@ export class Dashboard {
       const traded = state.currentWindow.tradeExecuted
         ? this.colorize('YES', 'yellow')
         : this.colorize('NO', 'dim');
+
+      // Entry window status
+      const entryStart = this.config.timing.entryWindowStartS;
+      const entryEnd = this.config.timing.entryWindowEndS;
+      let entryStatus: string;
+
+      if (remaining > entryStart) {
+        const untilEntry = (remaining - entryStart).toFixed(0);
+        entryStatus = this.colorize(`WAITING (entry in ${untilEntry}s)`, 'dim');
+      } else if (remaining >= entryEnd) {
+        entryStatus = this.colorize(`ENTRY WINDOW OPEN`, 'green');
+      } else {
+        entryStatus = this.colorize(`TOO LATE`, 'red');
+      }
+
       lines.push(
         `  ID: ${state.currentWindow.id.substring(7)}  │  ` +
-        `Remaining: ${remaining.toFixed(0)}s  │  ` +
-        `Traded: ${traded}`
+        `T-${remaining.toFixed(0)}s  │  ` +
+        `Traded: ${traded}  │  ` +
+        entryStatus
       );
     } else {
       lines.push('  Waiting for first window...');
     }
 
-    // Last Opportunity
+    // Last Signal
     lines.push('');
     lines.push(this.colorize('  LAST SIGNAL', 'white_bold'));
     if (state.lastOpportunity) {
@@ -154,16 +166,17 @@ export class Dashboard {
         : this.colorize(`SCORE: ${opp.score}`, opp.score >= 50 ? 'green' : 'yellow');
       lines.push(
         `  ${status}  │  ` +
-        `${opp.outcome} ${opp.side}  │  ` +
-        `Move: ${formatPct(opp.externalMovementPct)}  │  ` +
-        `Spread: ${opp.spreadBps.toFixed(0)}bps  │  ` +
+        `${opp.outcome} ${opp.orderType}  │  ` +
+        `Fair: ${(opp.fairProbability * 100).toFixed(1)}%  │  ` +
+        `Edge: ${(opp.probabilityEdge * 100).toFixed(1)}%  │  ` +
+        `T-${opp.timeRemainingS.toFixed(0)}s  │  ` +
         `${age}s ago`
       );
       if (opp.rejected && opp.rejectionReasons.length > 0) {
-        lines.push(`  Reason: ${opp.rejectionReasons[0]}`);
+        lines.push(`  ${this.colorize('Reason:', 'dim')} ${opp.rejectionReasons[0]}`);
       }
     } else {
-      lines.push('  No signals yet...');
+      lines.push('  Waiting for entry window...');
     }
 
     // Recent Trades
@@ -172,17 +185,18 @@ export class Dashboard {
     lines.push(
       '  ' +
       'ID'.padEnd(14) +
-      'Side'.padEnd(8) +
+      'Side'.padEnd(10) +
+      'Type'.padEnd(7) +
       'Entry'.padEnd(8) +
       'Exit'.padEnd(8) +
       'PnL'.padEnd(10) +
       'Reason'
     );
-    lines.push('  ' + '-'.repeat(64));
+    lines.push('  ' + '-'.repeat(70));
 
     const trades = state.recentTrades.slice(0, 8);
     if (trades.length === 0) {
-      lines.push('  No trades yet...');
+      lines.push('  Waiting for trades...');
     }
     for (const trade of trades) {
       const pnl = trade.pnl !== null ? formatUsd(trade.pnl) : 'open';
@@ -192,21 +206,23 @@ export class Dashboard {
           ? this.colorize(pnl, 'green')
           : this.colorize(pnl, 'red');
       const exitP = trade.exitPrice !== null ? trade.exitPrice.toFixed(3) : '-';
-      const reason = trade.exitReason?.summary ?? trade.entryReason.summary.substring(0, 20);
+      const reason = trade.exitReason?.summary ?? `Score: ${trade.entryReason.score}`;
+      const typeStr = trade.orderType === 'MAKER' ? 'MKR' : 'TKR';
       lines.push(
         '  ' +
         trade.id.substring(0, 13).padEnd(14) +
-        `${trade.outcome} ${trade.side}`.padEnd(8) +
+        `${trade.outcome} ${trade.side}`.padEnd(10) +
+        typeStr.padEnd(7) +
         trade.entryPrice.toFixed(3).padEnd(8) +
         exitP.padEnd(8) +
-        pnlC.padEnd(22) + // extra padding for ANSI escape codes
-        reason.substring(0, 24)
+        pnlC.padEnd(22) +
+        reason.substring(0, 28)
       );
     }
 
     lines.push('');
-    lines.push(this.colorize('═'.repeat(70), 'cyan'));
-    lines.push('  Press Ctrl+C to stop');
+    lines.push(this.colorize('═'.repeat(74), 'cyan'));
+    lines.push(`  Strategy: Last-Second Maker (T-${this.config.timing.entryWindowStartS}s to T-${this.config.timing.entryWindowEndS}s)  │  Press Ctrl+C to stop`);
 
     process.stdout.write(lines.join('\n') + '\n');
   }
@@ -225,7 +241,6 @@ export class Dashboard {
     return `${code}${text}\x1b[0m`;
   }
 
-  /** Stop the dashboard */
   stop(): void {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);

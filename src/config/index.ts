@@ -1,6 +1,6 @@
 // ============================================================
 // Configuration loader with strict validation via Zod.
-// Loads from .env, validates every field, fails fast on bad config.
+// Updated: last-second strategy params, dynamic fees, maker mode.
 // ============================================================
 
 import * as dotenv from 'dotenv';
@@ -37,15 +37,28 @@ const envSchema = z.object({
 
   // Risk limits
   MAX_STAKE_PER_TRADE: z.coerce.number().positive().default(10),
-  MAX_TRADES_PER_HOUR: z.coerce.number().int().positive().default(6),
+  MAX_TRADES_PER_HOUR: z.coerce.number().int().positive().default(12),
   MAX_DAILY_DRAWDOWN: z.coerce.number().positive().default(50),
-  MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().positive().default(3),
+  MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().positive().default(5),
 
   // Paper trading
   PAPER_STARTING_BALANCE: z.coerce.number().positive().default(1000),
 
   // Timing
   WINDOW_DURATION_SECONDS: z.coerce.number().int().positive().default(300),
+  // Last-second entry window: start looking N seconds before window end
+  ENTRY_WINDOW_START_S: z.coerce.number().positive().default(15),
+  // Stop entering N seconds before window end (safety buffer for execution)
+  ENTRY_WINDOW_END_S: z.coerce.number().nonnegative().default(3),
+
+  // Fee configuration
+  // Market type: '5m', '15m', '1h'
+  MARKET_TYPE: z.enum(['5m', '15m', '1h']).default('5m'),
+  // Prefer maker orders (0 fee + rebates) vs taker (pays fee)
+  PREFER_MAKER: z
+    .string()
+    .default('true')
+    .transform((v) => v.toLowerCase() === 'true'),
 
   // Logging
   LOG_LEVEL: z
@@ -67,7 +80,6 @@ const envSchema = z.object({
 
 /**
  * Validate that LIVE mode has all required API credentials.
- * Fails fast — never let a misconfigured bot near real money.
  */
 function validateLiveMode(env: z.infer<typeof envSchema>): void {
   if (env.TRADING_MODE !== 'LIVE') return;
@@ -131,6 +143,13 @@ export function loadConfig(): AppConfig {
 
     timing: {
       windowDurationSeconds: env.WINDOW_DURATION_SECONDS,
+      entryWindowStartS: env.ENTRY_WINDOW_START_S,
+      entryWindowEndS: env.ENTRY_WINDOW_END_S,
+    },
+
+    fees: {
+      marketType: env.MARKET_TYPE,
+      preferMaker: env.PREFER_MAKER,
     },
 
     logging: {

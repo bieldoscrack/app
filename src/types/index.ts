@@ -1,5 +1,6 @@
 // ============================================================
-// Global types for the Polymarket Trading Bot
+// Global types for the Polymarket Trading Bot v2
+// Updated: maker-first strategy, dynamic fees, last-second edge
 // ============================================================
 
 /** Trading mode — PAPER is simulated, LIVE is real money */
@@ -29,6 +30,12 @@ export enum TradeStatus {
   EXPIRED = 'EXPIRED',
 }
 
+/** Order type — maker (limit) vs taker (market) */
+export enum OrderType {
+  MAKER = 'MAKER',
+  TAKER = 'TAKER',
+}
+
 /** Why a trade was entered */
 export interface EntryReason {
   /** Score from the opportunity detector (0-100) */
@@ -41,6 +48,14 @@ export interface EntryReason {
   spreadBps: number;
   /** Estimated liquidity available in USDC */
   liquidityUsd: number;
+  /** Fair probability calculated at entry */
+  fairProbability: number;
+  /** Probability edge at entry (fair - book price) */
+  probabilityEdge: number;
+  /** Time remaining in window at entry (seconds) */
+  timeRemainingS: number;
+  /** Order type used */
+  orderType: OrderType;
   /** Human-readable summary */
   summary: string;
 }
@@ -48,7 +63,7 @@ export interface EntryReason {
 /** Why a trade was exited */
 export interface ExitReason {
   /** Type of exit */
-  type: 'target' | 'timeout' | 'stop_loss' | 'manual' | 'risk_halt';
+  type: 'target' | 'timeout' | 'stop_loss' | 'manual' | 'risk_halt' | 'window_end';
   /** Human-readable summary */
   summary: string;
 }
@@ -61,12 +76,15 @@ export interface Trade {
   side: TradeSide;
   status: TradeStatus;
   mode: TradingMode;
+  orderType: OrderType;
 
   /** Entry details */
   entryPrice: number;
   entryTimestamp: number;
   entryReason: EntryReason;
   stake: number;
+  /** Number of shares purchased (stake / entryPrice) */
+  shares: number;
 
   /** Exit details (null while open) */
   exitPrice: number | null;
@@ -75,6 +93,8 @@ export interface Trade {
 
   /** Profit/loss in USDC (null while open) */
   pnl: number | null;
+  /** Fee paid in USDC */
+  feePaid: number;
 
   /** The trading window this trade belongs to */
   windowId: string;
@@ -123,6 +143,7 @@ export interface Opportunity {
   marketId: string;
   outcome: MarketOutcome;
   side: TradeSide;
+  orderType: OrderType;
   score: number;
   externalMovementPct: number;
   persistenceConfirmed: boolean;
@@ -130,6 +151,9 @@ export interface Opportunity {
   liquidityUsd: number;
   suggestedStake: number;
   suggestedEntryPrice: number;
+  fairProbability: number;
+  probabilityEdge: number;
+  timeRemainingS: number;
   reasons: string[];
   rejected: boolean;
   rejectionReasons: string[];
@@ -156,6 +180,7 @@ export interface PortfolioState {
   winCount: number;
   lossCount: number;
   totalTrades: number;
+  totalFeesPaid: number;
 }
 
 /** Connection status for feeds */
@@ -209,6 +234,17 @@ export interface AppConfig {
 
   timing: {
     windowDurationSeconds: number;
+    /** Seconds before window end to start looking for entries */
+    entryWindowStartS: number;
+    /** Seconds before window end to stop entering (safety buffer) */
+    entryWindowEndS: number;
+  };
+
+  fees: {
+    /** Market duration type: '5m', '15m', '1h' */
+    marketType: string;
+    /** Whether to use maker orders (no fee + rebates) */
+    preferMaker: boolean;
   };
 
   logging: {
