@@ -46,13 +46,13 @@ interface DetectorParams {
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minMovementPct: 0.07,       // Was 0.15 — too strict, BTC rarely moves that fast in 10s
-  persistenceWindowSec: 5,
-  persistenceMinPct: 0.04,    // Was 0.10 — lowered to match relaxed movement threshold
-  maxSpreadBps: 500,          // Was 300 — allow wider spreads (5 cents) for more opportunities
-  minLiquidityUsd: 25,        // Was 100 — Polymarket books are often thin
-  maxEntryPriceYes: 0.95,     // Was 0.92 — slightly more permissive
-  minEntryPriceNo: 0.05,      // Was 0.08 — slightly more permissive
+  minMovementPct: 0.02,       // Very low — catch even small BTC ticks (~$14 on $70k)
+  persistenceWindowSec: 3,    // Shorter persistence window
+  persistenceMinPct: 0.01,    // Almost any sustained movement counts
+  maxSpreadBps: 800,          // Allow wider spreads (8 cents) for more opportunities
+  minLiquidityUsd: 10,        // Very low liquidity minimum
+  maxEntryPriceYes: 0.97,     // Very permissive
+  minEntryPriceNo: 0.03,      // Very permissive
 };
 
 export class OpportunityDetector {
