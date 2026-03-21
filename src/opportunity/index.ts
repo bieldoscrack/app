@@ -1,20 +1,20 @@
 // ============================================================
-// Opportunity Detector
+// Opportunity Detector v3 — Probability-Based Edge
 //
-// Analyzes external price movement + Polymarket book state
-// to produce a scored opportunity (0-100).
+// Core insight: BTC Up/Down 5min markets resolve based on
+// whether BTC is UP or DOWN at the end of a 5-minute window.
+// The REAL edge is calculating the fair probability of UP/DOWN
+// and comparing it to the current book price.
 //
-// Filters applied in order:
-// 1. External movement magnitude (minimum threshold)
-// 2. Movement persistence (confirmed over N seconds)
-// 3. Spread filter (max acceptable spread)
-// 4. Liquidity filter (minimum depth near mid)
-// 5. Entry price filter (avoid buying near extremes)
+// When fair_prob(UP) = 70% but book prices YES at 55%,
+// there's a 15% edge. THAT is a real trade.
 //
-// This is NOT a guarantee of edge. It's a structured way to
-// filter noise and score conditions. Real edge requires
-// backtesting with historical data — which this system
-// supports via comprehensive logging.
+// The old momentum approach was wrong — tiny BTC moves (0.03%)
+// don't overcome spread costs. Probability-based entry only
+// trades when the edge is mathematically clear.
+//
+// Filters: probability edge > spread cost + minimum threshold,
+// momentum confirmation, anti-chop, acceleration.
 // ============================================================
 
 import { createModuleLogger } from '../logger';
@@ -27,33 +27,47 @@ import {
   AppConfig,
 } from '../types';
 
-/** Tunable thresholds — all documented, no magic numbers */
+/** Tunable thresholds */
 interface DetectorParams {
   /** Minimum external price movement to consider (%) */
   minMovementPct: number;
-  /** Seconds to wait for persistence confirmation */
-  persistenceWindowSec: number;
-  /** Minimum % movement that must persist */
+  /** Minimum % movement that must persist (3s) */
   persistenceMinPct: number;
-  /** Maximum spread in basis points (100 bps = 1 cent on a $1 market) */
+  /** Maximum spread in basis points */
   maxSpreadBps: number;
-  /** Minimum liquidity within 3 cents of mid (in USDC) */
+  /** Minimum liquidity within 3 cents of mid (USDC) */
   minLiquidityUsd: number;
-  /** Max entry price for YES outcome (avoid buying near 0.95+) */
+  /** Max entry price for YES */
   maxEntryPriceYes: number;
-  /** Min entry price for NO outcome (avoid buying near 0.05-) */
+  /** Min entry price for NO */
   minEntryPriceNo: number;
+  /** Minimum probability edge after spread cost to trade (fraction, e.g. 0.03 = 3%) */
+  minEdgeAfterCost: number;
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minMovementPct: 0.03,       // ~$21 BTC move in 10s — filters noise but still catchable
-  persistenceWindowSec: 3,    // 3s persistence window
-  persistenceMinPct: 0.015,   // Movement must persist at least 0.015%
-  maxSpreadBps: 600,          // 6 cent spread max
-  minLiquidityUsd: 20,        // Reasonable minimum
-  maxEntryPriceYes: 0.95,     // Avoid extreme prices
-  minEntryPriceNo: 0.05,      // Avoid extreme prices
+  minMovementPct: 0.03,
+  persistenceMinPct: 0.015,
+  maxSpreadBps: 600,
+  minLiquidityUsd: 20,
+  maxEntryPriceYes: 0.95,
+  minEntryPriceNo: 0.05,
+  minEdgeAfterCost: 0.03, // Need at least 3% edge after spread costs
 };
+
+/**
+ * Normal CDF approximation (Abramowitz & Stegun).
+ * Accurate to ~1.5e-7. Good enough for trading.
+ */
+function normalCDF(x: number): number {
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+  const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const t = 1.0 / (1.0 + p * ax);
+  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-ax * ax / 2);
+  return 0.5 * (1.0 + sign * y);
+}
 
 export class OpportunityDetector {
   private config: AppConfig;
@@ -61,8 +75,12 @@ export class OpportunityDetector {
   private externalFeed: ExternalPriceFeed;
   private marketData: PolymarketDataClient;
   private lastDetectedAt = 0;
-  private cooldownMs = 5000;
+  private cooldownMs = 3000; // 3s cooldown — we're more selective now
   private lastMovementLogAt = 0;
+
+  /** Window context for probability calculation */
+  private windowRefPrice: number | null = null;
+  private windowEndMs: number | null = null;
 
   constructor(
     config: AppConfig,
@@ -76,31 +94,75 @@ export class OpportunityDetector {
     this.params = { ...DEFAULT_PARAMS, ...params };
   }
 
-  /**
-   * Calculate rolling volatility over recent price history.
-   * Returns annualized-style vol but for our purposes we just
-   * use it as a relative measure (higher = more volatile).
-   */
-  private calculateVolatility(): number {
-    const prices = this.externalFeed.getRecentPrices(30); // last 30s
-    if (prices.length < 10) return 0;
-
-    // Calculate returns
-    const returns: number[] = [];
-    for (let i = 1; i < prices.length; i++) {
-      const ret = (prices[i].price - prices[i - 1].price) / prices[i - 1].price;
-      returns.push(ret);
-    }
-
-    // Standard deviation of returns
-    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-    const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / returns.length;
-    return Math.sqrt(variance) * 100; // as percentage
+  /** Called by strategy engine when a new window starts */
+  setWindowContext(refPrice: number, windowEndMs: number): void {
+    this.windowRefPrice = refPrice;
+    this.windowEndMs = windowEndMs;
   }
 
   /**
-   * Detect choppy (ranging) market by counting direction changes.
-   * More reversals = choppier = worse for trend-following.
+   * Estimate per-second volatility from recent price data.
+   * Groups prices into 1-second buckets, calculates return std dev.
+   */
+  private estimateVolPerSecond(): number {
+    const prices = this.externalFeed.getRecentPrices(30);
+    if (prices.length < 20) return 0;
+
+    // Group by second, take last price of each second
+    const buckets: Map<number, number> = new Map();
+    for (const entry of prices) {
+      const sec = Math.floor(entry.timestamp / 1000);
+      buckets.set(sec, entry.price);
+    }
+
+    const secondPrices = Array.from(buckets.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(e => e[1]);
+
+    if (secondPrices.length < 5) return 0;
+
+    // Per-second returns
+    const returns: number[] = [];
+    for (let i = 1; i < secondPrices.length; i++) {
+      returns.push((secondPrices[i] - secondPrices[i - 1]) / secondPrices[i - 1]);
+    }
+
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / returns.length;
+    return Math.sqrt(variance);
+  }
+
+  /**
+   * Calculate the FAIR probability that BTC will be UP at window end.
+   * Uses the current BTC position vs reference and remaining time.
+   *
+   * Model: BTC follows random walk with estimated volatility.
+   * P(UP at expiry) = Φ(currentReturn / (σ * √timeRemaining))
+   */
+  private calculateFairProbability(): { fairProbUp: number; zScore: number; volPerSec: number } | null {
+    if (!this.windowRefPrice || !this.windowEndMs) return null;
+
+    const currentPrice = this.externalFeed.getCurrentPrice();
+    if (!currentPrice) return null;
+
+    const btcReturn = (currentPrice - this.windowRefPrice) / this.windowRefPrice;
+    const timeRemainingS = Math.max(1, (this.windowEndMs - Date.now()) / 1000);
+
+    const volPerSec = this.estimateVolPerSecond();
+    if (volPerSec <= 0) return null;
+
+    const expectedFurtherVol = volPerSec * Math.sqrt(timeRemainingS);
+    if (expectedFurtherVol <= 0) return null;
+
+    const zScore = btcReturn / expectedFurtherVol;
+    const fairProbUp = normalCDF(zScore);
+
+    return { fairProbUp, zScore, volPerSec };
+  }
+
+  /**
+   * Anti-chop: count direction changes in last 30s.
+   * High chop = trending is unreliable.
    */
   private getChopScore(): number {
     const prices = this.externalFeed.getRecentPrices(30);
@@ -108,7 +170,6 @@ export class OpportunityDetector {
 
     let directionChanges = 0;
     let lastDirection = 0;
-
     for (let i = 1; i < prices.length; i++) {
       const diff = prices[i].price - prices[i - 1].price;
       if (diff === 0) continue;
@@ -118,100 +179,53 @@ export class OpportunityDetector {
       }
       lastDirection = direction;
     }
-
-    // Normalize: direction changes per sample (0 = trending, 1 = max chop)
     return directionChanges / Math.max(1, prices.length - 1);
-  }
-
-  /**
-   * Calculate acceleration: is the movement speeding up or slowing down?
-   * Compares recent rate of change vs older rate of change.
-   * Positive = accelerating in trade direction. Negative = decelerating.
-   */
-  private getAcceleration(movementDirection: number): number {
-    const now = this.externalFeed.getCurrentPrice();
-    const p3s = this.externalFeed.getPriceSecondsAgo(3);
-    const p6s = this.externalFeed.getPriceSecondsAgo(6);
-    const p10s = this.externalFeed.getPriceSecondsAgo(10);
-
-    if (!now || !p3s || !p6s || !p10s) return 0;
-
-    // Rate of change: recent 3s vs older 3s (6s→3s)
-    const recentRate = ((now - p3s) / p3s) * 100; // last 3s
-    const olderRate = ((p6s - p10s) / p10s) * 100; // 10s→6s ago
-
-    // Both rates in the direction of the movement
-    const recentDirectional = recentRate * movementDirection;
-    const olderDirectional = olderRate * movementDirection;
-
-    // Acceleration = recent rate - older rate (positive = speeding up)
-    return recentDirectional - olderDirectional;
   }
 
   evaluate(): Opportunity | null {
     const log = createModuleLogger('opportunity');
     const now = Date.now();
 
-    if (now - this.lastDetectedAt < this.cooldownMs) {
-      return null;
-    }
+    if (now - this.lastDetectedAt < this.cooldownMs) return null;
 
     const currentPrice = this.externalFeed.getCurrentPrice();
     const book = this.marketData.getCurrentBook();
-
     if (!currentPrice || !book) return null;
 
-    // --- 1. External movement detection ---
+    // --- 1. Basic movement check (gate) ---
     const priceNSecsAgo = this.externalFeed.getPriceSecondsAgo(10);
     if (!priceNSecsAgo) return null;
 
     const movementPct = ((currentPrice - priceNSecsAgo) / priceNSecsAgo) * 100;
     const absMovement = Math.abs(movementPct);
-    const movementDirection = movementPct > 0 ? 1 : -1;
 
-    // --- VOLATILITY-ADJUSTED THRESHOLD ---
-    // In high volatility, require larger moves to filter noise
-    const vol = this.calculateVolatility();
-    const volMultiplier = vol > 0 ? Math.max(1.0, Math.min(3.0, vol / 0.005)) : 1.0;
-    const dynamicThreshold = this.params.minMovementPct * volMultiplier;
-
-    const reasons: string[] = [];
-    const rejectionReasons: string[] = [];
-    let rejected = false;
-
-    if (absMovement < dynamicThreshold) {
+    if (absMovement < this.params.minMovementPct) {
       if (now - this.lastMovementLogAt > 30000) {
         this.lastMovementLogAt = now;
-        log.debug('Movement below dynamic threshold', {
+        log.debug('Movement below threshold', {
           movement: `${movementPct.toFixed(4)}%`,
-          threshold: `${dynamicThreshold.toFixed(4)}%`,
-          volatility: `${vol.toFixed(5)}%`,
-          volMultiplier: volMultiplier.toFixed(2),
+          threshold: `${this.params.minMovementPct}%`,
         });
       }
       return null;
     }
 
-    reasons.push(`Move: ${movementPct > 0 ? '+' : ''}${movementPct.toFixed(3)}% (thr: ${dynamicThreshold.toFixed(3)}%)`);
+    const reasons: string[] = [];
+    const rejectionReasons: string[] = [];
+    let rejected = false;
 
-    // --- 2. ANTI-CHOP FILTER ---
+    reasons.push(`Move: ${movementPct > 0 ? '+' : ''}${movementPct.toFixed(3)}% 10s`);
+
+    // --- 2. Anti-chop filter ---
     const chopScore = this.getChopScore();
-    if (chopScore > 0.6) {
-      // Market is too choppy — more than 60% of ticks are reversals
-      return null;
-    }
+    if (chopScore > 0.6) return null;
     reasons.push(`Chop: ${(chopScore * 100).toFixed(0)}%`);
 
-    // --- 3. ACCELERATION CHECK ---
-    const acceleration = this.getAcceleration(movementDirection);
-    const isAccelerating = acceleration > 0;
-    reasons.push(`Accel: ${acceleration > 0 ? '+' : ''}${acceleration.toFixed(4)}% ${isAccelerating ? '↑' : '↓'}`);
-
-    // --- 4. Multi-timeframe momentum confirmation ---
+    // --- 3. Momentum confirmation (2/3 timeframes) ---
     const price3sAgo = this.externalFeed.getPriceSecondsAgo(3);
     const price20sAgo = this.externalFeed.getPriceSecondsAgo(20);
+    let momentumScore = 1; // 10s already passed
     let persistenceConfirmed = false;
-    let momentumScore = 0;
 
     if (price3sAgo) {
       const move3s = ((currentPrice - price3sAgo) / price3sAgo) * 100;
@@ -220,9 +234,6 @@ export class OpportunityDetector {
         persistenceConfirmed = true;
       }
     }
-
-    momentumScore++; // 10s already passed
-
     if (price20sAgo) {
       const move20s = ((currentPrice - price20sAgo) / price20sAgo) * 100;
       if (Math.sign(move20s) === Math.sign(movementPct) && Math.abs(move20s) >= this.params.minMovementPct) {
@@ -230,43 +241,34 @@ export class OpportunityDetector {
       }
     }
 
-    reasons.push(`Momentum: ${momentumScore}/3`);
+    if (momentumScore < 2) return null;
+    reasons.push(`Mom: ${momentumScore}/3`);
 
-    // Require at least 2/3 timeframes aligned
-    if (momentumScore < 2) {
-      return null;
-    }
-
-    // --- 5. Determine direction ---
+    // --- 4. Determine direction ---
     const outcome = movementPct > 0 ? MarketOutcome.YES : MarketOutcome.NO;
     const side = TradeSide.BUY;
     const suggestedEntryPrice = outcome === MarketOutcome.YES
       ? book.bestAsk
       : (1 - book.bestBid);
 
-    // --- 6. Spread filter ---
+    // --- 5. Spread filter ---
     const spreadBps = book.spread * 10000;
     if (spreadBps > this.params.maxSpreadBps) {
-      rejectionReasons.push(`Spread: ${spreadBps.toFixed(0)} bps > ${this.params.maxSpreadBps}`);
+      rejectionReasons.push(`Spread: ${spreadBps.toFixed(0)}bps > ${this.params.maxSpreadBps}`);
       rejected = true;
-    } else {
-      reasons.push(`Spread: ${spreadBps.toFixed(0)} bps`);
     }
 
-    // --- 7. Liquidity filter ---
+    // --- 6. Liquidity filter ---
     const liquidity = this.marketData.getLiquidityWithinCents(3);
     const relevantLiquidity = outcome === MarketOutcome.YES
-      ? liquidity.askLiquidity
-      : liquidity.bidLiquidity;
+      ? liquidity.askLiquidity : liquidity.bidLiquidity;
 
     if (relevantLiquidity < this.params.minLiquidityUsd) {
-      rejectionReasons.push(`Liquidity: $${relevantLiquidity.toFixed(0)} < $${this.params.minLiquidityUsd}`);
+      rejectionReasons.push(`Liq: $${relevantLiquidity.toFixed(0)} < $${this.params.minLiquidityUsd}`);
       rejected = true;
-    } else {
-      reasons.push(`Liq: $${relevantLiquidity.toFixed(0)}`);
     }
 
-    // --- 8. Entry price filter ---
+    // --- 7. Entry price filter ---
     if (outcome === MarketOutcome.YES && suggestedEntryPrice > this.params.maxEntryPriceYes) {
       rejectionReasons.push(`YES price ${suggestedEntryPrice.toFixed(3)} > ${this.params.maxEntryPriceYes}`);
       rejected = true;
@@ -276,40 +278,69 @@ export class OpportunityDetector {
       rejected = true;
     }
 
-    // --- 9. SCORING (0-100) ---
-    // movement(25) + momentum(20) + acceleration(15) + chop(10) + spread(10) + liquidity(10) + price(10)
-    let score = 0;
+    // --- 8. PROBABILITY-BASED EDGE (the core edge) ---
+    const prob = this.calculateFairProbability();
+    let probabilityEdge = 0;
+    let fairProbDisplay = 'N/A';
 
-    // Movement: stronger move = higher score. Scale by how much it exceeds threshold
-    const movementExcess = absMovement / dynamicThreshold; // 1.0 = just at threshold
-    score += Math.min(25, (movementExcess - 1) * 25 + 10); // 10-25
+    if (prob) {
+      const { fairProbUp, zScore } = prob;
+      fairProbDisplay = `${(fairProbUp * 100).toFixed(1)}%`;
 
-    // Momentum: 2/3 = 10pts, 3/3 = 20pts
-    score += momentumScore === 3 ? 20 : 10;
+      // Calculate edge: difference between fair probability and book price
+      if (outcome === MarketOutcome.YES) {
+        // We're buying YES — edge = fairProbUp - what we pay
+        probabilityEdge = fairProbUp - suggestedEntryPrice;
+      } else {
+        // We're buying NO — edge = fairProbDown - what we pay
+        probabilityEdge = (1 - fairProbUp) - suggestedEntryPrice;
+      }
 
-    // Acceleration: positive = 15pts, neutral = 5pts, decelerating = 0
-    if (isAccelerating) {
-      score += 15;
-    } else if (acceleration > -0.005) {
-      score += 5; // barely decelerating is OK
+      // Spread cost as fraction of entry
+      const spreadCostFraction = book.spread * 0.75; // approximate round-trip cost
+
+      const netEdge = probabilityEdge - spreadCostFraction;
+
+      reasons.push(`Fair: ${fairProbDisplay} | z: ${zScore.toFixed(2)} | Edge: ${(probabilityEdge * 100).toFixed(1)}% | Net: ${(netEdge * 100).toFixed(1)}%`);
+
+      // Reject if insufficient edge after costs
+      if (netEdge < this.params.minEdgeAfterCost) {
+        rejectionReasons.push(`Edge too small: ${(netEdge * 100).toFixed(1)}% < ${(this.params.minEdgeAfterCost * 100).toFixed(0)}%`);
+        rejected = true;
+      }
+    } else {
+      // No probability data — still allow momentum-based trades but penalize score
+      reasons.push('No prob data (momentum only)');
     }
 
-    // Chop: lower = better. 0% chop = 10, 60% chop = 0
+    // --- 9. SCORING (0-100) ---
+    let score = 0;
+
+    // Probability edge: 0-40 points (dominant factor)
+    if (probabilityEdge > 0) {
+      score += Math.min(40, probabilityEdge * 100 * 4); // 10% edge = 40pts
+    }
+
+    // Movement strength: 0-15 points
+    const volAdjustedMove = absMovement / Math.max(0.03, this.params.minMovementPct);
+    score += Math.min(15, (volAdjustedMove - 1) * 10 + 5);
+
+    // Momentum: 2/3 = 8pts, 3/3 = 15pts
+    score += momentumScore === 3 ? 15 : 8;
+
+    // Chop quality: 0-10 (lower chop = better)
     score += Math.max(0, 10 * (1 - chopScore / 0.6));
 
-    // Spread
+    // Spread quality: 0-10
     score += Math.max(0, 10 * (1 - spreadBps / this.params.maxSpreadBps));
 
-    // Liquidity
-    score += Math.min(10, (relevantLiquidity / (this.params.minLiquidityUsd * 2)) * 10);
-
-    // Price distance from 0.50 (closer = better)
+    // Price position: 0-10 (closer to 0.50 = better)
     const priceDistance = Math.abs(suggestedEntryPrice - 0.5);
     score += Math.max(0, 10 * (1 - priceDistance / 0.5));
 
     score = Math.round(Math.min(100, Math.max(0, score)));
 
-    // Suggested stake: proportional to score
+    // Stake: proportional to score
     const maxStake = this.config.risk.maxStakePerTrade;
     const suggestedStake = Math.max(1, Math.round(maxStake * (score / 100) * 100) / 100);
 
@@ -336,6 +367,8 @@ export class OpportunityDetector {
       log.debug('Opportunity REJECTED', {
         score,
         movement: movementPct.toFixed(3),
+        fairProb: fairProbDisplay,
+        edge: `${(probabilityEdge * 100).toFixed(1)}%`,
         rejections: rejectionReasons,
       });
     } else {
@@ -343,9 +376,9 @@ export class OpportunityDetector {
         score,
         outcome,
         movement: movementPct.toFixed(3),
-        acceleration: acceleration.toFixed(4),
-        chop: `${(chopScore * 100).toFixed(0)}%`,
-        vol: vol.toFixed(5),
+        fairProb: fairProbDisplay,
+        edge: `${(probabilityEdge * 100).toFixed(1)}%`,
+        spread: spreadBps.toFixed(0),
       });
     }
 

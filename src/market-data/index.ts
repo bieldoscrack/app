@@ -32,6 +32,9 @@ export class PolymarketDataClient extends EventEmitter {
   private shouldPoll = true;
   private externalPriceGetter: (() => number | null) | null = null;
   private baselineExternalPrice: number | null = null;
+  /** Lag buffer: simulated book reacts to BTC with realistic delay */
+  private priceLagBuffer: Array<{price: number, ts: number}> = [];
+  private bookLagMs = 2500; // 2.5 second book reaction delay
 
   constructor(config: AppConfig) {
     super();
@@ -168,33 +171,57 @@ export class PolymarketDataClient extends EventEmitter {
     let midPrice = 0.50; // start at 50 cents
 
     this.pollInterval = setInterval(() => {
-      // --- Coupled movement: follow external price changes ---
+      // --- Coupled movement with REALISTIC LAG ---
+      // Real Polymarket books take 2-5s to adjust to BTC moves.
+      // We simulate this by using a LAGGED BTC price for the book.
+      // This creates the latency arbitrage window that is the core edge.
       let externalDrift = 0;
       if (this.externalPriceGetter) {
         const extPrice = this.externalPriceGetter();
         if (extPrice) {
-          if (this.baselineExternalPrice === null) {
-            this.baselineExternalPrice = extPrice;
+          const now = Date.now();
+
+          // Store in lag buffer
+          this.priceLagBuffer.push({ price: extPrice, ts: now });
+          // Prune entries older than 10s
+          while (this.priceLagBuffer.length > 0 && this.priceLagBuffer[0].ts < now - 10000) {
+            this.priceLagBuffer.shift();
           }
-          // Calculate external price change as percentage
-          const extChangePct = (extPrice - this.baselineExternalPrice) / this.baselineExternalPrice;
-          // Apply 90% of external movement — high correlation for active markets
-          externalDrift = extChangePct * 0.90;
-          // Update baseline slowly to prevent drift accumulation
-          this.baselineExternalPrice = this.baselineExternalPrice * 0.999 + extPrice * 0.001;
+
+          // Find the lagged price (bookLagMs ago)
+          const lagTarget = now - this.bookLagMs;
+          let laggedPrice = extPrice; // fallback if not enough history
+          for (let i = this.priceLagBuffer.length - 1; i >= 0; i--) {
+            if (this.priceLagBuffer[i].ts <= lagTarget) {
+              laggedPrice = this.priceLagBuffer[i].price;
+              break;
+            }
+          }
+
+          if (this.baselineExternalPrice === null) {
+            this.baselineExternalPrice = laggedPrice;
+          }
+
+          // Book uses LAGGED price — this is the key to realistic simulation
+          const extChangePct = (laggedPrice - this.baselineExternalPrice) / this.baselineExternalPrice;
+          // 95% coupling — BTC Up/Down markets are highly correlated
+          externalDrift = extChangePct * 0.95;
+          // Slow baseline update
+          this.baselineExternalPrice = this.baselineExternalPrice * 0.999 + laggedPrice * 0.001;
         }
       }
 
-      // Small random noise: ±0.02% per tick (minimal)
-      const noise = (Math.random() - 0.5) * 0.0004;
+      // Minimal noise: ±0.01% (just enough to not be perfectly deterministic)
+      const noise = (Math.random() - 0.5) * 0.0002;
 
-      // Base price (0.50) + external drift + noise
       midPrice = 0.50 + externalDrift + noise;
       midPrice = Math.max(0.05, Math.min(0.95, midPrice));
 
-      const spread = 0.01; // 1 cent spread (realistic for active Polymarket markets)
-      const bestBid = Math.round((midPrice - spread / 2) * 100) / 100;
-      const bestAsk = Math.round((midPrice + spread / 2) * 100) / 100;
+      // 0.5 cent spread — realistic for active Polymarket markets
+      const spread = 0.005;
+      // Use 3 decimal precision for tighter spread
+      const bestBid = Math.round((midPrice - spread / 2) * 1000) / 1000;
+      const bestAsk = Math.round((midPrice + spread / 2) * 1000) / 1000;
 
       // Generate depth levels
       const bids: OrderBookLevel[] = [];

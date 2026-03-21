@@ -42,9 +42,9 @@ interface ExitParams {
 
 const DEFAULT_EXIT_PARAMS: ExitParams = {
   timeoutSeconds: 270, // 4.5 minutes (within 5-min window)
-  profitTargetPct: 1.5, // 1.5% profit target — achievable with 1 cent spread
-  stopLossPct: 2.0, // 2% stop loss
-  trailingStopPct: 0.5, // Once in profit, trail 0.5% below peak
+  profitTargetPct: 1.0, // 1.0% profit target — achievable with 0.5 cent spread
+  stopLossPct: 1.5, // 1.5% stop loss — tighter risk control
+  trailingStopPct: 0.4, // Trail 0.4% below peak profit
 };
 
 export class StrategyEngine {
@@ -118,7 +118,18 @@ export class StrategyEngine {
         });
       }
       this.currentWindow = window;
-      log.info('New window started', { windowId: window.id });
+
+      // Record reference BTC price at window start
+      const btcPrice = this.externalFeed.getCurrentPrice();
+      if (btcPrice) {
+        this.detector.setWindowContext(btcPrice, window.endTimestamp);
+        log.info('New window started', {
+          windowId: window.id,
+          referenceBtc: btcPrice,
+        });
+      } else {
+        log.info('New window started (no BTC price yet)', { windowId: window.id });
+      }
     }
 
     // Skip if already traded in this window
@@ -133,8 +144,8 @@ export class StrategyEngine {
     // Skip rejected opportunities
     if (opp.rejected) return;
 
-    // Minimum score threshold — higher = fewer but better trades
-    const MIN_SCORE = 40;
+    // Minimum score threshold — probability edge is the primary gatekeeper now
+    const MIN_SCORE = 45;
     if (opp.score < MIN_SCORE) {
       log.debug('Opportunity score too low', { score: opp.score, min: MIN_SCORE });
       return;
@@ -254,8 +265,8 @@ export class StrategyEngine {
           // YES trade expects BTC up → if BTC dropping, that's reversal
           // NO trade expects BTC down → if BTC rising, that's reversal
           const isReversal = trade.outcome === MarketOutcome.YES
-            ? btcMove5s < -0.02 // BTC dropped 0.02% in last 5s
-            : btcMove5s > 0.02;  // BTC rose 0.02% in last 5s
+            ? btcMove5s < -0.035 // BTC dropped 0.035% in last 5s
+            : btcMove5s > 0.035;  // BTC rose 0.035% in last 5s
 
           if (isReversal && pricePct < 0) {
             // Momentum reversed AND we're in the red — cut losses early
