@@ -35,12 +35,15 @@ interface ExitParams {
   profitTargetPct: number;
   /** Stop loss as % of entry price */
   stopLossPct: number;
+  /** Enable trailing stop: once in profit, trail at this % below peak */
+  trailingStopPct: number;
 }
 
 const DEFAULT_EXIT_PARAMS: ExitParams = {
   timeoutSeconds: 270, // 4.5 minutes (within 5-min window)
-  profitTargetPct: 2.0, // 2% profit target — more achievable
-  stopLossPct: 3.0, // 3% stop loss — wider to avoid noise triggers
+  profitTargetPct: 1.5, // 1.5% profit target — achievable with 1 cent spread
+  stopLossPct: 2.0, // 2% stop loss
+  trailingStopPct: 0.5, // Once in profit, trail 0.5% below peak
 };
 
 export class StrategyEngine {
@@ -57,6 +60,8 @@ export class StrategyEngine {
   private exitCheckInterval: ReturnType<typeof setInterval> | null = null;
   private lastOpportunity: Opportunity | null = null;
   private running = false;
+  /** Track peak price per trade for trailing stop */
+  private tradePeakPrices: Map<string, number> = new Map();
 
   constructor(
     config: AppConfig,
@@ -127,8 +132,8 @@ export class StrategyEngine {
     // Skip rejected opportunities
     if (opp.rejected) return;
 
-    // Minimum score threshold — balanced: requires decent signal quality
-    const MIN_SCORE = 25;
+    // Minimum score threshold — higher = fewer but better trades
+    const MIN_SCORE = 40;
     if (opp.score < MIN_SCORE) {
       log.debug('Opportunity score too low', { score: opp.score, min: MIN_SCORE });
       return;
@@ -184,7 +189,7 @@ export class StrategyEngine {
     }
   }
 
-  /** Check exit conditions for open trades */
+  /** Check exit conditions for open trades (with trailing stop) */
   private checkExits(): void {
     if (!this.running) return;
 
@@ -196,23 +201,25 @@ export class StrategyEngine {
       const book = this.marketData.getCurrentBook();
       if (!book) continue;
 
-      // Use realistic exit price: sell at bid (not mid) for more accurate PnL
-      const exitPrice = book.bestBid;
+      // Use midPrice for exit evaluation (bestBid is too pessimistic for sim)
+      // Apply half-spread slippage for realism
+      const exitPrice = book.midPrice - (book.spread * 0.25);
       const holdTime = (now - trade.entryTimestamp) / 1000;
       const priceDelta = exitPrice - trade.entryPrice;
       const pricePct = (priceDelta / trade.entryPrice) * 100;
 
+      // Update peak price for trailing stop
+      const peakPrice = this.tradePeakPrices.get(trade.id) ?? trade.entryPrice;
+      if (exitPrice > peakPrice) {
+        this.tradePeakPrices.set(trade.id, exitPrice);
+      }
+      const currentPeak = this.tradePeakPrices.get(trade.id) ?? trade.entryPrice;
+      const peakPct = ((currentPeak - trade.entryPrice) / trade.entryPrice) * 100;
+      const dropFromPeak = ((currentPeak - exitPrice) / currentPeak) * 100;
+
       let exitReason: ExitReason | null = null;
 
-      // 1. Timeout exit
-      if (holdTime >= this.exitParams.timeoutSeconds) {
-        exitReason = {
-          type: 'timeout',
-          summary: `Timeout after ${holdTime.toFixed(0)}s`,
-        };
-      }
-
-      // 2. Profit target
+      // 1. Profit target
       if (pricePct >= this.exitParams.profitTargetPct) {
         exitReason = {
           type: 'target',
@@ -220,18 +227,42 @@ export class StrategyEngine {
         };
       }
 
+      // 2. Trailing stop: only activate once we've been in profit > 0.3%
+      if (!exitReason && peakPct > 0.3 && dropFromPeak >= this.exitParams.trailingStopPct) {
+        exitReason = {
+          type: 'target',
+          summary: `Trailing stop: peak ${peakPct.toFixed(2)}%, dropped ${dropFromPeak.toFixed(2)}%`,
+        };
+      }
+
       // 3. Stop loss
-      if (pricePct <= -this.exitParams.stopLossPct) {
+      if (!exitReason && pricePct <= -this.exitParams.stopLossPct) {
         exitReason = {
           type: 'stop_loss',
           summary: `Stop loss hit: ${pricePct.toFixed(2)}%`,
         };
       }
 
+      // 4. Timeout exit
+      if (!exitReason && holdTime >= this.exitParams.timeoutSeconds) {
+        exitReason = {
+          type: 'timeout',
+          summary: `Timeout after ${holdTime.toFixed(0)}s (PnL: ${pricePct.toFixed(2)}%)`,
+        };
+      }
+
       if (exitReason) {
-        const closed = this.paperEngine.closeTrade(trade.id, exitPrice, exitReason);
+        // Apply Polymarket trading fee (~2% on profits only)
+        const rawExitPrice = exitPrice;
+        const closed = this.paperEngine.closeTrade(trade.id, rawExitPrice, exitReason);
         if (closed && closed.pnl !== null) {
+          // Simulate Polymarket fee: ~2% fee on winning trades
+          if (closed.pnl > 0) {
+            const fee = closed.pnl * 0.02;
+            closed.pnl = Math.round((closed.pnl - fee) * 100) / 100;
+          }
           this.riskManager.recordTradeClosed(closed.pnl);
+          this.tradePeakPrices.delete(trade.id);
           log.info('TRADE CLOSED', {
             tradeId: closed.id,
             entryPrice: closed.entryPrice,

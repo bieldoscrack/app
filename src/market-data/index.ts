@@ -178,21 +178,21 @@ export class PolymarketDataClient extends EventEmitter {
           }
           // Calculate external price change as percentage
           const extChangePct = (extPrice - this.baselineExternalPrice) / this.baselineExternalPrice;
-          // Apply ~80% of external movement to simulated price (with lag)
-          externalDrift = extChangePct * 0.80;
+          // Apply 90% of external movement — high correlation for active markets
+          externalDrift = extChangePct * 0.90;
           // Update baseline slowly to prevent drift accumulation
           this.baselineExternalPrice = this.baselineExternalPrice * 0.999 + extPrice * 0.001;
         }
       }
 
-      // Small random noise: ±0.05% per tick (much less than before)
-      const noise = (Math.random() - 0.5) * 0.001;
+      // Small random noise: ±0.02% per tick (minimal)
+      const noise = (Math.random() - 0.5) * 0.0004;
 
       // Base price (0.50) + external drift + noise
       midPrice = 0.50 + externalDrift + noise;
       midPrice = Math.max(0.05, Math.min(0.95, midPrice));
 
-      const spread = 0.02; // 2 cent spread
+      const spread = 0.01; // 1 cent spread (realistic for active Polymarket markets)
       const bestBid = Math.round((midPrice - spread / 2) * 100) / 100;
       const bestAsk = Math.round((midPrice + spread / 2) * 100) / 100;
 

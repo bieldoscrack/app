@@ -61,7 +61,7 @@ export class OpportunityDetector {
   private externalFeed: ExternalPriceFeed;
   private marketData: PolymarketDataClient;
   private lastDetectedAt = 0;
-  private cooldownMs = 2000; // min 2s between detections (was 5s — too slow)
+  private cooldownMs = 5000; // min 5s between detections — avoid overtrading
   private lastMovementLogAt = 0; // throttle movement debug logs
 
   constructor(
@@ -123,23 +123,38 @@ export class OpportunityDetector {
 
     reasons.push(`External move: ${movementPct > 0 ? '+' : ''}${movementPct.toFixed(3)}% in 10s`);
 
-    // --- 2. Persistence confirmation ---
-    const price5sAgo = this.externalFeed.getPriceSecondsAgo(this.params.persistenceWindowSec);
+    // --- 2. Multi-timeframe momentum confirmation ---
+    // Check movement direction consistency across 3s, 10s, and 20s
+    const price3sAgo = this.externalFeed.getPriceSecondsAgo(3);
+    const price20sAgo = this.externalFeed.getPriceSecondsAgo(20);
     let persistenceConfirmed = false;
+    let momentumScore = 0;
 
-    if (price5sAgo) {
-      const persistencePct = ((currentPrice - price5sAgo) / price5sAgo) * 100;
-      // Movement must be in same direction and above minimum
-      if (Math.sign(persistencePct) === Math.sign(movementPct) &&
-          Math.abs(persistencePct) >= this.params.persistenceMinPct) {
+    // 3s momentum (short-term confirmation)
+    if (price3sAgo) {
+      const move3s = ((currentPrice - price3sAgo) / price3sAgo) * 100;
+      if (Math.sign(move3s) === Math.sign(movementPct) && Math.abs(move3s) >= this.params.persistenceMinPct) {
+        momentumScore++;
         persistenceConfirmed = true;
-        reasons.push(`Persistence confirmed: ${persistencePct.toFixed(3)}% over ${this.params.persistenceWindowSec}s`);
-      } else {
-        // Soft factor: persistence failure reduces score but does NOT reject
-        reasons.push(`Persistence not confirmed: ${persistencePct.toFixed(3)}% (wanted ${this.params.persistenceMinPct}%)`);
       }
-    } else {
-      reasons.push('Not enough price history for persistence check (soft skip)');
+    }
+
+    // 10s momentum (already checked as main movement)
+    momentumScore++; // main movement already passed threshold
+
+    // 20s momentum (longer-term trend)
+    if (price20sAgo) {
+      const move20s = ((currentPrice - price20sAgo) / price20sAgo) * 100;
+      if (Math.sign(move20s) === Math.sign(movementPct) && Math.abs(move20s) >= this.params.minMovementPct) {
+        momentumScore++;
+      }
+    }
+
+    reasons.push(`Momentum: ${momentumScore}/3 timeframes aligned`);
+
+    // Require at least 2/3 timeframes aligned
+    if (momentumScore < 2) {
+      return null; // Not enough momentum confirmation
     }
 
     // --- 3. Determine direction ---
@@ -190,27 +205,28 @@ export class OpportunityDetector {
     }
 
     // --- 7. Score calculation ---
-    // Weighted scoring: movement (30), persistence (20), spread (20), liquidity (20), price (10)
+    // Weighted: movement (30), momentum (25), spread (15), liquidity (15), price (15)
     let score = 0;
 
-    // Movement score: linear from minMovement to 2x min = 0-30
-    const movementScore = Math.min(30, (absMovement / (this.params.minMovementPct * 2)) * 30);
+    // Movement score: linear from minMovement to 3x min = 0-30
+    const movementScore = Math.min(30, (absMovement / (this.params.minMovementPct * 3)) * 30);
     score += movementScore;
 
-    // Persistence score: binary 0 or 20
-    if (persistenceConfirmed) score += 20;
+    // Momentum score: 2/3 = 12pts, 3/3 = 25pts (big bonus for full alignment)
+    const momentumPts = momentumScore === 3 ? 25 : 12;
+    score += momentumPts;
 
-    // Spread score: narrow = good. 0 spread = 20, max spread = 0
-    const spreadScore = Math.max(0, 20 * (1 - spreadBps / this.params.maxSpreadBps));
+    // Spread score: narrow = good. 0 spread = 15, max spread = 0
+    const spreadScore = Math.max(0, 15 * (1 - spreadBps / this.params.maxSpreadBps));
     score += spreadScore;
 
-    // Liquidity score: more = better, capped at 2x min = 20
-    const liqScore = Math.min(20, (relevantLiquidity / (this.params.minLiquidityUsd * 2)) * 20);
+    // Liquidity score: more = better, capped at 2x min = 15
+    const liqScore = Math.min(15, (relevantLiquidity / (this.params.minLiquidityUsd * 2)) * 15);
     score += liqScore;
 
-    // Price score: mid-range = best (10), extremes = 0
+    // Price score: mid-range = best (15), extremes = 0
     const priceDistance = Math.abs(suggestedEntryPrice - 0.5);
-    const priceScore = Math.max(0, 10 * (1 - priceDistance / 0.5));
+    const priceScore = Math.max(0, 15 * (1 - priceDistance / 0.5));
     score += priceScore;
 
     score = Math.round(score);
