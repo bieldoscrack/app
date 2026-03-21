@@ -24,6 +24,7 @@ import {
   ConnectionStatus,
   Opportunity,
   ExitReason,
+  MarketOutcome,
 } from '../types';
 import { getCurrentWindow } from '../utils';
 
@@ -189,7 +190,7 @@ export class StrategyEngine {
     }
   }
 
-  /** Check exit conditions for open trades (with trailing stop) */
+  /** Check exit conditions for open trades (with trailing stop + momentum reversal) */
   private checkExits(): void {
     if (!this.running) return;
 
@@ -201,9 +202,18 @@ export class StrategyEngine {
       const book = this.marketData.getCurrentBook();
       if (!book) continue;
 
-      // Use midPrice for exit evaluation (bestBid is too pessimistic for sim)
-      // Apply half-spread slippage for realism
-      const exitPrice = book.midPrice - (book.spread * 0.25);
+      // --- CORRECT exit price based on outcome ---
+      // YES BUY: sell YES = get bestBid (with small improvement for sim)
+      // NO BUY: sell NO = 1 - bestAsk (inverted book side)
+      let exitPrice: number;
+      if (trade.outcome === MarketOutcome.YES) {
+        // Selling YES: realistic fill between bid and mid
+        exitPrice = book.bestBid + (book.spread * 0.25);
+      } else {
+        // Selling NO: NO exit price = 1 - YES bestAsk (with improvement)
+        exitPrice = 1 - book.bestAsk + (book.spread * 0.25);
+      }
+
       const holdTime = (now - trade.entryTimestamp) / 1000;
       const priceDelta = exitPrice - trade.entryPrice;
       const pricePct = (priceDelta / trade.entryPrice) * 100;
@@ -227,7 +237,7 @@ export class StrategyEngine {
         };
       }
 
-      // 2. Trailing stop: only activate once we've been in profit > 0.3%
+      // 2. Trailing stop: activate once in profit > 0.3%
       if (!exitReason && peakPct > 0.3 && dropFromPeak >= this.exitParams.trailingStopPct) {
         exitReason = {
           type: 'target',
@@ -235,7 +245,29 @@ export class StrategyEngine {
         };
       }
 
-      // 3. Stop loss
+      // 3. Momentum reversal exit — if BTC reversed direction vs our trade
+      if (!exitReason && holdTime > 5) {
+        const btcNow = this.externalFeed.getCurrentPrice();
+        const btc5sAgo = this.externalFeed.getPriceSecondsAgo(5);
+        if (btcNow && btc5sAgo) {
+          const btcMove5s = ((btcNow - btc5sAgo) / btc5sAgo) * 100;
+          // YES trade expects BTC up → if BTC dropping, that's reversal
+          // NO trade expects BTC down → if BTC rising, that's reversal
+          const isReversal = trade.outcome === MarketOutcome.YES
+            ? btcMove5s < -0.02 // BTC dropped 0.02% in last 5s
+            : btcMove5s > 0.02;  // BTC rose 0.02% in last 5s
+
+          if (isReversal && pricePct < 0) {
+            // Momentum reversed AND we're in the red — cut losses early
+            exitReason = {
+              type: 'stop_loss',
+              summary: `Momentum reversal: BTC ${btcMove5s > 0 ? '+' : ''}${btcMove5s.toFixed(3)}% vs ${trade.outcome} (PnL: ${pricePct.toFixed(2)}%)`,
+            };
+          }
+        }
+      }
+
+      // 4. Stop loss
       if (!exitReason && pricePct <= -this.exitParams.stopLossPct) {
         exitReason = {
           type: 'stop_loss',
@@ -243,7 +275,7 @@ export class StrategyEngine {
         };
       }
 
-      // 4. Timeout exit
+      // 5. Timeout exit
       if (!exitReason && holdTime >= this.exitParams.timeoutSeconds) {
         exitReason = {
           type: 'timeout',
@@ -252,11 +284,9 @@ export class StrategyEngine {
       }
 
       if (exitReason) {
-        // Apply Polymarket trading fee (~2% on profits only)
-        const rawExitPrice = exitPrice;
-        const closed = this.paperEngine.closeTrade(trade.id, rawExitPrice, exitReason);
+        const closed = this.paperEngine.closeTrade(trade.id, exitPrice, exitReason);
         if (closed && closed.pnl !== null) {
-          // Simulate Polymarket fee: ~2% fee on winning trades
+          // Simulate Polymarket fee: ~2% on winning trades
           if (closed.pnl > 0) {
             const fee = closed.pnl * 0.02;
             closed.pnl = Math.round((closed.pnl - fee) * 100) / 100;
@@ -265,6 +295,7 @@ export class StrategyEngine {
           this.tradePeakPrices.delete(trade.id);
           log.info('TRADE CLOSED', {
             tradeId: closed.id,
+            outcome: closed.outcome,
             entryPrice: closed.entryPrice,
             exitPrice: closed.exitPrice,
             pnl: closed.pnl,
