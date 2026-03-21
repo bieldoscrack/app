@@ -1,0 +1,26 @@
+{
+  "name": "polymarket-trading-bot",
+  "version": "0.1.0",
+  "description": "Professional paper trading bot for Polymarket crypto markets",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:36861/git/bieldoscrack/app"
+  },
+  "keywords": ["polymarket", "trading", "paper-trading"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^25.5.0",
+    "dotenv": "^17.3.1",
+    "typescript": "^5.9.3",
+    "winston": "^3.19.0",
+    "zod": "^4.3.6"
+  }
+}
