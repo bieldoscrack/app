@@ -1,21 +1,28 @@
 // ============================================================
 // Polymarket Trading Bot — Main Bootstrap
 //
-// This is the entry point. It:
-// 1. Loads and validates configuration
-// 2. Initializes the logger
-// 3. Enforces PAPER mode by default
-// 4. Initializes core modules
-// 5. Starts the main loop (placeholder for now)
+// Wires all modules together and starts the system:
+// 1. Config → Logger → Paper Engine → External Feed →
+//    Market Data → Risk Manager → Opportunity Detector →
+//    Strategy → Metrics → Dashboard
+// 2. Enforces PAPER mode, blocks LIVE
+// 3. Graceful shutdown on SIGINT/SIGTERM
 // ============================================================
 
 import { loadConfig } from './config';
 import { initLogger, createModuleLogger } from './logger';
 import { PaperTradingEngine } from './paper-trading';
+import { ExternalPriceFeed } from './external-feed';
+import { PolymarketDataClient } from './market-data';
+import { RiskManager } from './risk-manager';
+import { OpportunityDetector } from './opportunity';
+import { StrategyEngine } from './strategy';
+import { MetricsCollector } from './metrics';
+import { Dashboard } from './dashboard';
 import { TradingMode } from './types';
 
 async function main(): Promise<void> {
-  // --- 1. Load config (fails fast on bad env) ---
+  // --- 1. Load config ---
   const config = loadConfig();
 
   // --- 2. Initialize logger ---
@@ -32,7 +39,7 @@ async function main(): Promise<void> {
   log.info(`Max trades/hour: ${config.risk.maxTradesPerHour}`);
   log.info('='.repeat(60));
 
-  // --- 4. Safety gate: block LIVE mode unless explicitly confirmed ---
+  // --- 4. Safety gate ---
   if (config.tradingMode === TradingMode.LIVE) {
     log.error(
       'LIVE mode is disabled in this version. ' +
@@ -44,39 +51,103 @@ async function main(): Promise<void> {
 
   log.info('Running in PAPER TRADE mode — no real money at risk');
 
-  // --- 5. Initialize paper trading engine ---
+  // --- 5. Initialize modules ---
   const paperEngine = new PaperTradingEngine(config);
-  const portfolio = paperEngine.getPortfolioState();
-  log.info('Paper trading engine ready', {
-    balance: portfolio.balance,
-    startingBalance: portfolio.startingBalance,
+  log.info('Paper trading engine ready');
+
+  const externalFeed = new ExternalPriceFeed(config);
+  const marketData = new PolymarketDataClient(config);
+  const riskManager = new RiskManager(config);
+
+  const detector = new OpportunityDetector(config, externalFeed, marketData);
+  log.info('Opportunity detector ready');
+
+  const strategy = new StrategyEngine(
+    config,
+    detector,
+    riskManager,
+    paperEngine,
+    externalFeed,
+    marketData
+  );
+  log.info('Strategy engine ready');
+
+  const metrics = new MetricsCollector({
+    config,
+    paperEngine,
+    riskManager,
+    externalFeed,
+    marketData,
+    strategy,
   });
 
-  // --- 6. Graceful shutdown handler ---
+  const dashboard = new Dashboard(config, metrics, externalFeed);
+
+  // --- 6. Graceful shutdown ---
+  let shuttingDown = false;
   const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
     log.info(`Received ${signal}, shutting down gracefully...`);
+
+    dashboard.stop();
+    strategy.stop();
+    externalFeed.stop();
+    marketData.stop();
+
     const finalState = paperEngine.getPortfolioState();
-    log.info('Final portfolio state', {
-      balance: finalState.balance,
-      totalPnl: finalState.totalPnl,
-      totalTrades: finalState.totalTrades,
-      winCount: finalState.winCount,
-      lossCount: finalState.lossCount,
-    });
+    log.info('='.repeat(60));
+    log.info('FINAL PORTFOLIO STATE');
+    log.info(`Balance: $${finalState.balance.toFixed(2)}`);
+    log.info(`Total PnL: $${finalState.totalPnl.toFixed(2)}`);
+    log.info(`Trades: ${finalState.totalTrades} (W: ${finalState.winCount} / L: ${finalState.lossCount})`);
+    if (finalState.totalTrades > 0) {
+      log.info(`Win Rate: ${((finalState.winCount / finalState.totalTrades) * 100).toFixed(1)}%`);
+    }
+    log.info('='.repeat(60));
+
     process.exit(0);
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  // --- 7. Main loop placeholder ---
-  log.info('Foundation initialized. Modules pending: market-data, external-feed, opportunity, strategy, execution, risk-manager, dashboard');
-  log.info('Bot is idle — awaiting module implementation (Etapas 3-7)');
+  // --- 7. Start data feeds ---
+  log.info('Starting data feeds...');
+
+  externalFeed.on('connected', () => {
+    log.info('External feed connected — starting strategy');
+    // Wait a few seconds for price buffer to fill before starting strategy
+    setTimeout(() => {
+      strategy.start();
+      log.info('Strategy engine started');
+    }, 5000);
+  });
+
+  externalFeed.on('fatal', (err: Error) => {
+    log.error('External feed fatal error — halting', { error: err.message });
+    riskManager.halt('External feed connection lost');
+  });
+
+  externalFeed.on('stale', () => {
+    log.warn('External feed stale — risk manager notified');
+  });
+
+  externalFeed.start();
+  marketData.start(2000);
+
+  // --- 8. Start dashboard ---
+  if (config.dashboard.enabled) {
+    // Give feeds time to connect before dashboard starts
+    setTimeout(() => {
+      dashboard.start();
+      log.info('Dashboard started');
+    }, 3000);
+  }
 
   // Keep process alive
-  await new Promise<void>(() => {
-    // Intentionally never resolves — process stays alive until signal
-  });
+  await new Promise<void>(() => {});
 }
 
 // --- Entry point ---
