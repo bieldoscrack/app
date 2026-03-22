@@ -43,12 +43,12 @@ interface DetectorParams {
 }
 
 const DEFAULT_PARAMS: DetectorParams = {
-  minProbabilityEdge: 0.08,   // Need at least 8% edge (better risk/reward)
-  minFairProbability: 0.60,   // Fair prob must be > 60% on our side
+  minProbabilityEdge: 0.04,   // Need at least 4% edge (was 8%, too restrictive)
+  minFairProbability: 0.58,   // Fair prob must be > 58% on our side
   maxSpreadBps: 800,
   minLiquidityUsd: 15,
-  makerPriceDiscount: 0.88,   // Place maker order at 88% of fair prob (more discount = better R/R)
-  maxChopScore: 0.55,
+  makerPriceDiscount: 0.90,   // Place maker order at 90% of fair prob (tighter = more fills)
+  maxChopScore: 0.60,         // Allow slightly choppier markets
 };
 
 /**
@@ -151,7 +151,8 @@ export class OpportunityDetector {
     if (expectedFurtherVol <= 0) return null;
 
     const zScore = btcReturn / expectedFurtherVol;
-    const fairProbUp = normalCDF(zScore);
+    // Clamp to [0.02, 0.98] — 100% fair prob is unrealistic and distorts edge calc
+    const fairProbUp = Math.min(0.95, Math.max(0.05, normalCDF(zScore)));
 
     return { fairProbUp, zScore, volPerSec, timeRemainingS, btcReturn };
   }
@@ -258,10 +259,10 @@ export class OpportunityDetector {
     const btcMoveAbs = Math.abs(btcReturn) * 100; // in percent
     const recentMove3s = this.getRecentMovePercent(3);
     // Reject if: large move that's already decelerating (potential reversal)
-    if (btcMoveAbs > 0.15 && recentMove3s !== null) {
+    if (btcMoveAbs > 0.25 && recentMove3s !== null) {
       const isDecelerating = isUpFavored
-        ? recentMove3s < -0.01  // BTC was up but last 3s it's dropping
-        : recentMove3s > 0.01;  // BTC was down but last 3s it's rising
+        ? recentMove3s < -0.02  // BTC was up but last 3s it's dropping hard
+        : recentMove3s > 0.02;  // BTC was down but last 3s it's rising hard
       if (isDecelerating) {
         rejectionReasons.push(`Mean reversion: BTC ${btcMoveAbs.toFixed(2)}% but last 3s ${recentMove3s > 0 ? '+' : ''}${recentMove3s.toFixed(3)}%`);
         rejected = true;
@@ -314,8 +315,8 @@ export class OpportunityDetector {
     }
 
     // --- 9. Price bounds check ---
-    if (suggestedEntryPrice > 0.85) {
-      rejectionReasons.push(`Entry price ${suggestedEntryPrice.toFixed(3)} > 0.85 (bad R/R)`);
+    if (suggestedEntryPrice > 0.92) {
+      rejectionReasons.push(`Entry price ${suggestedEntryPrice.toFixed(3)} > 0.92 (bad R/R)`);
       rejected = true;
     }
     if (suggestedEntryPrice < 0.05) {
