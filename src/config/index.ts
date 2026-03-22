@@ -36,10 +36,10 @@ const envSchema = z.object({
   EXTERNAL_SYMBOL: z.string().default('BTCUSDT'),
 
   // Risk limits
-  MAX_STAKE_PER_TRADE: z.coerce.number().positive().default(10),
-  MAX_TRADES_PER_HOUR: z.coerce.number().int().positive().default(999),
+  MAX_STAKE_PER_TRADE: z.coerce.number().positive().default(2),
+  MAX_TRADES_PER_HOUR: z.coerce.number().int().positive().default(9999),
   MAX_DAILY_DRAWDOWN: z.coerce.number().positive().default(50),
-  MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().positive().default(999),
+  MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().positive().default(9999),
 
   // Paper trading
   PAPER_STARTING_BALANCE: z.coerce.number().positive().default(50),
