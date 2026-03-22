@@ -47,7 +47,7 @@ const envSchema = z.object({
   // Timing
   WINDOW_DURATION_SECONDS: z.coerce.number().int().positive().default(300),
   // Last-second entry window: start looking N seconds before window end
-  ENTRY_WINDOW_START_S: z.coerce.number().positive().default(12),
+  ENTRY_WINDOW_START_S: z.coerce.number().positive().default(60),
   // Stop entering N seconds before window end (safety buffer for execution)
   ENTRY_WINDOW_END_S: z.coerce.number().nonnegative().default(3),
 
